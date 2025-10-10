@@ -28,6 +28,7 @@ export interface Message {
 }
 
 export interface BlastHit {
+    accession: string;
     description: string;
     score: number;
     e_value: string;
@@ -50,8 +51,8 @@ export enum ContentType {
     PUBMED_SUMMARY = 'pubmed_summary',
     SUMMARY = 'summary',
     CHAT_SESSION = 'chat_session',
-    // FIX: Added 'run_blastp' to allow for real-time BLAST searches.
     RUN_BLASTP = 'run_blastp',
+    BLAST_PROGRESS = 'blast_progress',
 }
 
 export interface ContentBlock {
