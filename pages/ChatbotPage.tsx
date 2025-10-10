@@ -234,22 +234,83 @@ const ChatbotPage: React.FC = () => {
 
       try {
           const fullResponse = await sendMessage(chat, finalPrompt);
+          let responseData: AiResponse;
 
-          let actions: any[] = [];
           try {
-              const parsed: AiResponse = JSON.parse(fullResponse);
-              actions = parsed.actions || [];
-          } catch (e) { /* Ignore if not valid JSON */ }
+              const jsonStart = fullResponse.indexOf('{');
+              const jsonEnd = fullResponse.lastIndexOf('}');
+              const jsonString = fullResponse.substring(jsonStart, jsonEnd + 1);
+              responseData = JSON.parse(jsonString);
+          } catch (e) {
+              responseData = { prose: fullResponse, tool_calls: [], actions: [] };
+          }
 
-          const rhesusMessage: Message = {
-            id: `rhesus-${Date.now()}`,
-            author: MessageAuthor.RHESUS,
-            content: parseAndRenderResponse(fullResponse),
-            rawContent: fullResponse,
-            actions
-          };
+          const blastToolCall = responseData.tool_calls?.find(tc => tc.type === 'run_blastp');
 
-          setMessages(prev => [...prev, rhesusMessage]);
+          if (blastToolCall && blastToolCall.data.sequence) {
+              const initialRhesusMessage: Message = {
+                  id: `rhesus-${Date.now()}`,
+                  author: MessageAuthor.RHESUS,
+                  content: <MarkdownRenderer content={responseData.prose} />,
+                  rawContent: JSON.stringify({ prose: responseData.prose }),
+                  actions: responseData.actions,
+              };
+              setMessages(prev => [...prev, initialRhesusMessage]);
+
+              const systemMessage: Message = {
+                  id: `sys-${Date.now()}`,
+                  author: MessageAuthor.SYSTEM,
+                  content: 'Performing real-time BLASTp search via EMBL-EBI... this may take up to a minute.',
+                  rawContent: 'Performing real-time BLASTp search via EMBL-EBI... this may take up to a minute.'
+              };
+              setMessages(prev => [...prev, systemMessage]);
+
+              try {
+                  const blastApiResponse = await fetch('/api/blastp', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ sequence: blastToolCall.data.sequence })
+                  });
+
+                  if (!blastApiResponse.ok) {
+                      const errorText = await blastApiResponse.text();
+                      throw new Error(`BLAST service failed: ${errorText}`);
+                  }
+
+                  const blastResults: BlastHit[] = await blastApiResponse.json();
+                  const blastResultMessage: Message = {
+                      id: `rhesus-blast-${Date.now()}`,
+                      author: MessageAuthor.RHESUS,
+                      content: parseAndRenderResponse(JSON.stringify({
+                          prose: "Here are the results from the real-time BLASTp search.",
+                          tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
+                      })),
+                      rawContent: JSON.stringify({
+                          prose: "Here are the results from the real-time BLASTp search.",
+                          tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
+                      }),
+                  };
+                  setMessages(prev => [...prev.filter(m => m.id !== systemMessage.id), blastResultMessage]);
+
+              } catch (blastError: any) {
+                  const errorMessage: Message = {
+                      id: `sys-error-${Date.now()}`,
+                      author: MessageAuthor.SYSTEM,
+                      content: `BLAST search failed: ${blastError.message}`,
+                      rawContent: `BLAST search failed: ${blastError.message}`
+                  };
+                  setMessages(prev => [...prev.filter(m => m.id !== systemMessage.id), errorMessage]);
+              }
+          } else {
+              const rhesusMessage: Message = {
+                  id: `rhesus-${Date.now()}`,
+                  author: MessageAuthor.RHESUS,
+                  content: parseAndRenderResponse(fullResponse),
+                  rawContent: fullResponse,
+                  actions: responseData.actions || []
+              };
+              setMessages(prev => [...prev, rhesusMessage]);
+          }
           setApiStatus('healthy');
       } catch (error) {
           setApiStatus('error');
