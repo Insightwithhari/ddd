@@ -44,6 +44,8 @@ const ChatbotPage: React.FC = () => {
   const [contentToSave, setContentToSave] = useState<ContentBlock | null>(null);
   const [showCopiedTooltip, setShowCopiedTooltip] = useState(false);
   
+  const pollIntervalsRef = useRef<Record<string, { intervalId: number; timeoutId: number }>>({});
+  
   const historyKey = useMemo(() => activeProjectId ? `chatHistory_${activeProjectId}` : 'chatHistory_general', [activeProjectId]);
   
   const handleSaveToActiveProject = useCallback((contentBlock: ContentBlock) => {
@@ -187,6 +189,83 @@ const ChatbotPage: React.FC = () => {
   const isLoadingRef = useRef(isLoading);
   useEffect(() => { isLoadingRef.current = isLoading; }, [isLoading]);
 
+    const stopPolling = useCallback((jobId: string) => {
+        if (pollIntervalsRef.current[jobId]) {
+            clearInterval(pollIntervalsRef.current[jobId].intervalId);
+            clearTimeout(pollIntervalsRef.current[jobId].timeoutId);
+            delete pollIntervalsRef.current[jobId];
+        }
+    }, []);
+
+    const startPolling = useCallback((jobId: string, systemMessageId: string) => {
+        const intervalId = window.setInterval(async () => {
+            try {
+                const pollResponse = await fetch('/api/blastp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobId })
+                });
+
+                if (!pollResponse.ok) {
+                    throw new Error(`Polling failed with status: ${pollResponse.status}`);
+                }
+
+                const pollData = await pollResponse.json();
+                
+                if (pollData.status === 'FINISHED') {
+                    stopPolling(jobId);
+                    const blastResults = pollData.results;
+                    const blastResultMessage: Message = {
+                        id: `rhesus-blast-${Date.now()}`,
+                        author: MessageAuthor.RHESUS,
+                        content: parseAndRenderResponse(JSON.stringify({
+                            prose: "The real-time BLASTp search is complete. Here are the top results.",
+                            tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
+                        })),
+                        rawContent: JSON.stringify({
+                            prose: "The real-time BLASTp search is complete. Here are the top results.",
+                            tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
+                        }),
+                    };
+                    setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), blastResultMessage]);
+
+                } else if (pollData.status === 'FAILURE') {
+                    stopPolling(jobId);
+                    const errorMessage: Message = {
+                        id: `sys-error-${Date.now()}`, author: MessageAuthor.SYSTEM,
+                        content: `BLAST search with Job ID ${jobId} failed: ${pollData.message}`,
+                        rawContent: `BLAST search with Job ID ${jobId} failed: ${pollData.message}`
+                    };
+                    setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), errorMessage]);
+                }
+                // If status is 'RUNNING', do nothing and let the interval continue.
+
+            } catch (error: any) {
+                stopPolling(jobId);
+                const errorMessage: Message = {
+                    id: `sys-error-${Date.now()}`, author: MessageAuthor.SYSTEM,
+                    content: `An error occurred while checking BLAST status for Job ID ${jobId}: ${error.message}`,
+                    rawContent: `An error occurred while checking BLAST status for Job ID ${jobId}: ${error.message}`
+                };
+                setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), errorMessage]);
+            }
+        }, 5000); // Poll every 5 seconds
+
+        const timeoutId = window.setTimeout(() => {
+            if (pollIntervalsRef.current[jobId]) {
+                stopPolling(jobId);
+                const timeoutMessage: Message = {
+                    id: `sys-timeout-${Date.now()}`, author: MessageAuthor.SYSTEM,
+                    content: `Polling for BLAST Job ID ${jobId} timed out after 5 minutes. The job may still be running. You can check the status manually on the EBI website.`,
+                    rawContent: `Polling for BLAST Job ID ${jobId} timed out after 5 minutes. The job may still be running. You can check the status manually on the EBI website.`
+                };
+                setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), timeoutMessage]);
+            }
+        }, 300000); // 5-minute timeout for polling
+
+        pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
+    }, [stopPolling, parseAndRenderResponse]);
+
   const handleSendMessage = useCallback(async (messageContent: string, file?: File, replyToMessage?: Message | null): Promise<void> => {
       if (!chat || isLoadingRef.current) return;
       
@@ -244,72 +323,51 @@ const ChatbotPage: React.FC = () => {
           } catch (e) {
               responseData = { prose: fullResponse, tool_calls: [], actions: [] };
           }
+          
+          const rhesusMessage: Message = {
+              id: `rhesus-${Date.now()}`,
+              author: MessageAuthor.RHESUS,
+              content: parseAndRenderResponse(JSON.stringify({ prose: responseData.prose, actions: responseData.actions })),
+              rawContent: JSON.stringify({ prose: responseData.prose, actions: responseData.actions }),
+              actions: responseData.actions || []
+          };
+          setMessages(prev => [...prev, rhesusMessage]);
 
           const blastToolCall = responseData.tool_calls?.find(tc => tc.type === 'run_blastp');
 
           if (blastToolCall && blastToolCall.data.sequence) {
-              const initialRhesusMessage: Message = {
-                  id: `rhesus-${Date.now()}`,
-                  author: MessageAuthor.RHESUS,
-                  content: <MarkdownRenderer content={responseData.prose} />,
-                  rawContent: JSON.stringify({ prose: responseData.prose }),
-                  actions: responseData.actions,
-              };
-              setMessages(prev => [...prev, initialRhesusMessage]);
-
-              const systemMessage: Message = {
-                  id: `sys-${Date.now()}`,
-                  author: MessageAuthor.SYSTEM,
-                  content: 'Performing real-time BLASTp search via EMBL-EBI... this may take up to a minute.',
-                  rawContent: 'Performing real-time BLASTp search via EMBL-EBI... this may take up to a minute.'
-              };
-              setMessages(prev => [...prev, systemMessage]);
-
               try {
-                  const blastApiResponse = await fetch('/api/blastp', {
+                  const submitApiResponse = await fetch('/api/blastp', {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ sequence: blastToolCall.data.sequence })
                   });
 
-                  if (!blastApiResponse.ok) {
-                      const errorText = await blastApiResponse.text();
-                      throw new Error(`BLAST service failed: ${errorText}`);
+                  if (!submitApiResponse.ok) {
+                      const errorBody = await submitApiResponse.json();
+                      throw new Error(errorBody.error || `BLAST service failed: ${submitApiResponse.statusText}`);
                   }
 
-                  const blastResults: BlastHit[] = await blastApiResponse.json();
-                  const blastResultMessage: Message = {
-                      id: `rhesus-blast-${Date.now()}`,
-                      author: MessageAuthor.RHESUS,
-                      content: parseAndRenderResponse(JSON.stringify({
-                          prose: "Here are the results from the real-time BLASTp search.",
-                          tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
-                      })),
-                      rawContent: JSON.stringify({
-                          prose: "Here are the results from the real-time BLASTp search.",
-                          tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
-                      }),
+                  const { jobId } = await submitApiResponse.json();
+                  if (!jobId) throw new Error("Did not receive a Job ID from the server.");
+                  
+                  const pollSystemMessage: Message = {
+                      id: `sys-poll-${jobId}`,
+                      author: MessageAuthor.SYSTEM,
+                      content: <MarkdownRenderer content={`BLAST search submitted. **Job ID: ${jobId}**. I will report back with the results shortly.`} />,
+                      rawContent: `BLAST search submitted. Job ID: ${jobId}. I will report back with the results shortly.`
                   };
-                  setMessages(prev => [...prev.filter(m => m.id !== systemMessage.id), blastResultMessage]);
+                  setMessages(prev => [...prev, pollSystemMessage]);
+                  startPolling(jobId, pollSystemMessage.id);
 
               } catch (blastError: any) {
                   const errorMessage: Message = {
-                      id: `sys-error-${Date.now()}`,
-                      author: MessageAuthor.SYSTEM,
+                      id: `sys-error-${Date.now()}`, author: MessageAuthor.SYSTEM,
                       content: `BLAST search failed: ${blastError.message}`,
                       rawContent: `BLAST search failed: ${blastError.message}`
                   };
-                  setMessages(prev => [...prev.filter(m => m.id !== systemMessage.id), errorMessage]);
+                  setMessages(prev => [...prev, errorMessage]);
               }
-          } else {
-              const rhesusMessage: Message = {
-                  id: `rhesus-${Date.now()}`,
-                  author: MessageAuthor.RHESUS,
-                  content: parseAndRenderResponse(fullResponse),
-                  rawContent: fullResponse,
-                  actions: responseData.actions || []
-              };
-              setMessages(prev => [...prev, rhesusMessage]);
           }
           setApiStatus('healthy');
       } catch (error) {
@@ -319,7 +377,7 @@ const ChatbotPage: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  }, [chat, setApiStatus, parseAndRenderResponse, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat]);
+  }, [chat, setApiStatus, parseAndRenderResponse, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling]);
 
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => { handleSendMessageRef.current = handleSendMessage; }, [handleSendMessage]);
@@ -377,7 +435,12 @@ const ChatbotPage: React.FC = () => {
         };
         recognitionRef.current = recognition;
     }
-  }, [historyKey, rehydrateMessages, isNewChat]);
+
+    // Cleanup polling intervals on unmount or historyKey change
+    return () => {
+        Object.keys(pollIntervalsRef.current).forEach(jobId => stopPolling(jobId));
+    };
+  }, [historyKey, rehydrateMessages, isNewChat, stopPolling]);
 
   useEffect(() => {
     const initialQuery = sessionStorage.getItem('initialQuery');
