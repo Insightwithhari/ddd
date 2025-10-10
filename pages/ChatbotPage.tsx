@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { Chat } from '@google/genai';
-import { createChatSession, sendMessage, sendMessageWithSearch } from '../services/geminiService';
+import { createChatSession, sendMessage } from '../services/geminiService';
 import { Message, MessageAuthor, ContentType, Project, Snapshot, BlastHit, ContentBlock, Pipeline, AiResponse, ToolCall, RecentChat } from '../types';
 import { GREETINGS } from '../constants';
 import { useAppContext } from '../App';
@@ -10,6 +10,7 @@ import ChatInput from '../components/ChatInput';
 import PDBViewer from '../components/PDBViewer';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import BlastViewer from '../components/BlastChart';
+import BlastProgress from '../components/BlastProgress';
 import { PinIcon, ShareIcon, CheckIcon } from '../components/icons';
 
 declare const window: any; // For SpeechRecognition
@@ -86,15 +87,13 @@ const ChatbotPage: React.FC = () => {
     setShowCopiedTooltip(true);
     setTimeout(() => setShowCopiedTooltip(false), 2000);
   }, []);
+  
+  const renderRhesusContent = useCallback((rawContentString?: string): React.ReactNode => {
+    if (!rawContentString) return null;
 
-  const parseAndRenderResponse = useCallback((rawContent: string) => {
     try {
-        const jsonStart = rawContent.indexOf('{');
-        const jsonEnd = rawContent.lastIndexOf('}');
-        if (jsonStart === -1 || jsonEnd === -1) throw new Error("No JSON object found");
-
-        const jsonString = rawContent.substring(jsonStart, jsonEnd + 1);
-        const response: AiResponse = JSON.parse(jsonString);
+        // Attempt to parse as our structured AiResponse object
+        const response: AiResponse = JSON.parse(rawContentString);
         const componentParts: React.ReactNode[] = [];
 
         if (response.prose) {
@@ -103,54 +102,65 @@ const ChatbotPage: React.FC = () => {
 
         if (response.tool_calls) {
             response.tool_calls.forEach((tool_call, index) => {
-                try {
-                    const { type, data } = tool_call;
-                    const contentBlock: ContentBlock = { id: `tool-${Date.now()}-${index}`, type, data };
-                    let contentWithCaption: React.ReactNode = null;
+                const { type, data } = tool_call;
+                const contentBlock: ContentBlock = { id: `tool-${Date.now()}-${index}`, type, data };
+                let contentWithCaption: React.ReactNode = null;
 
-                    switch (type) {
-                        case ContentType.PDB_VIEWER:
-                            contentWithCaption = (<div><Caption text={`3D Structure: ${data.pdbId}`} /><PDBViewer pdbId={data.pdbId} /></div>);
-                            break;
-                        case ContentType.PUBMED_SUMMARY:
-                            contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="Literature Summary" /><h3 className="font-bold mb-2 primary-text">Summary</h3><MarkdownRenderer content={data.summary} /></div>);
-                            break;
-                        case ContentType.BLAST_RESULT:
-                            contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="BLAST Results" />{Array.isArray(data) ? <BlastViewer data={data} /> : <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(data, null, 2)}</pre>}</div>);
-                            break;
-                    }
-                    
-                    if (contentWithCaption) {
-                         componentParts.push(
-                            <div key={contentBlock.id} className="relative group my-2 first:mt-0 last:mb-0">
-                                {contentWithCaption}
+                switch (type) {
+                    case ContentType.PDB_VIEWER:
+                        contentWithCaption = (<div><Caption text={`3D Structure: ${data.pdbId}`} /><PDBViewer pdbId={data.pdbId} /></div>);
+                        break;
+                    case ContentType.PUBMED_SUMMARY:
+                        contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="Literature Summary" /><h3 className="font-bold mb-2 primary-text">Summary</h3><MarkdownRenderer content={data.summary} /></div>);
+                        break;
+                    case ContentType.BLAST_RESULT:
+                        contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="BLAST Results" />{Array.isArray(data) ? <BlastViewer data={data} /> : <pre className="whitespace-pre-wrap text-xs">{JSON.stringify(data, null, 2)}</pre>}</div>);
+                        break;
+                    case ContentType.BLAST_PROGRESS:
+                        contentWithCaption = (<BlastProgress status={data.status} jobId={data.jobId} errorMessage={data.errorMessage} />);
+                        break;
+                }
+
+                if (contentWithCaption) {
+                    componentParts.push(
+                        <div key={contentBlock.id} className="relative group my-2 first:mt-0 last:mb-0">
+                            {contentWithCaption}
+                             { type !== ContentType.BLAST_PROGRESS && (
                                 <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                     <button onClick={() => handleSaveContent(contentBlock)} className="p-1.5 bg-slate-700/80 text-white rounded-full hover:bg-slate-600"><PinIcon /></button>
                                     <button onClick={() => handleShareContent(contentBlock)} className="p-1.5 bg-slate-700/80 text-white rounded-full hover:bg-slate-600"><ShareIcon /></button>
                                 </div>
-                            </div>
-                        );
-                    }
-                } catch (renderError) {
-                    console.error("Error rendering tool_call:", tool_call, renderError);
-                    componentParts.push(<div key={`error-${index}`} className="text-red-500 text-sm">Error displaying tool output.</div>);
+                            )}
+                        </div>
+                    );
                 }
             });
         }
         return <div>{componentParts}</div>;
 
     } catch (e) {
-        console.error("Failed to parse AI response as JSON:", e, "Raw content:", rawContent);
-        return <MarkdownRenderer content={rawContent} />;
+        // If parsing fails, it's likely just a plain string (like the initial greeting)
+        return <MarkdownRenderer content={rawContentString} />;
     }
   }, [handleSaveContent, handleShareContent]);
 
+
   const rehydrateMessages = useCallback((storedMessages: any[]) => {
-      return storedMessages.map(msg => ({
-          ...msg,
-          content: msg.author === MessageAuthor.RHESUS && msg.rawContent ? parseAndRenderResponse(msg.rawContent) : <MarkdownRenderer content={msg.rawContent || ''} />,
-      }));
-  }, [parseAndRenderResponse]);
+      return storedMessages.map(msg => {
+            let content: React.ReactNode;
+            if (msg.author === MessageAuthor.RHESUS) {
+                // For BLAST_PROGRESS messages that were interrupted, show an error state on reload.
+                if (msg.rawContent?.includes(ContentType.BLAST_PROGRESS)) {
+                    content = <BlastProgress status="error" errorMessage="Search was interrupted. Please try again." />;
+                } else {
+                    content = renderRhesusContent(msg.rawContent);
+                }
+            } else {
+                content = <MarkdownRenderer content={msg.rawContent || ''} />;
+            }
+            return { ...msg, content };
+      });
+  }, [renderRhesusContent]);
   
   const handleToggleAudio = useCallback((messageId: string, text: string) => {
     if (speakingMessageId === messageId) {
@@ -197,7 +207,7 @@ const ChatbotPage: React.FC = () => {
         }
     }, []);
 
-    const startPolling = useCallback((jobId: string, systemMessageId: string) => {
+    const startPolling = useCallback((jobId: string, messageId: string) => {
         const intervalId = window.setInterval(async () => {
             try {
                 const pollResponse = await fetch('/api/blastp', {
@@ -206,86 +216,56 @@ const ChatbotPage: React.FC = () => {
                     body: JSON.stringify({ jobId })
                 });
 
-                if (!pollResponse.ok) {
-                    throw new Error(`Polling failed with status: ${pollResponse.status}`);
-                }
-
+                if (!pollResponse.ok) throw new Error(`Polling failed with status: ${pollResponse.status}`);
                 const pollData = await pollResponse.json();
                 
                 if (pollData.status === 'FINISHED') {
                     stopPolling(jobId);
-                    const blastResults = pollData.results;
-                    const blastResultMessage: Message = {
-                        id: `rhesus-blast-${Date.now()}`,
-                        author: MessageAuthor.RHESUS,
-                        content: parseAndRenderResponse(JSON.stringify({
-                            prose: "The real-time BLASTp search is complete. Here are the top results.",
-                            tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
-                        })),
-                        rawContent: JSON.stringify({
-                            prose: "The real-time BLASTp search is complete. Here are the top results.",
-                            tool_calls: [{ type: ContentType.BLAST_RESULT, data: blastResults }]
-                        }),
-                    };
-                    setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), blastResultMessage]);
+                    const finalRawContent = JSON.stringify({
+                        prose: "The real-time BLASTp search is complete. Here are the top results.",
+                        tool_calls: [{ type: ContentType.BLAST_RESULT, data: pollData.results }]
+                    });
+                    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: finalRawContent, content: renderRhesusContent(finalRawContent) } : m));
 
                 } else if (pollData.status === 'FAILURE') {
                     stopPolling(jobId);
-                    const errorMessage: Message = {
-                        id: `sys-error-${Date.now()}`, author: MessageAuthor.SYSTEM,
-                        content: `BLAST search with Job ID ${jobId} failed: ${pollData.message}`,
-                        rawContent: `BLAST search with Job ID ${jobId} failed: ${pollData.message}`
-                    };
-                    setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), errorMessage]);
+                    const errorRawContent = JSON.stringify({
+                        tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'error', jobId, errorMessage: pollData.message } }]
+                    });
+                    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
                 }
-                // If status is 'RUNNING', do nothing and let the interval continue.
-
             } catch (error: any) {
                 stopPolling(jobId);
-                const errorMessage: Message = {
-                    id: `sys-error-${Date.now()}`, author: MessageAuthor.SYSTEM,
-                    content: `An error occurred while checking BLAST status for Job ID ${jobId}: ${error.message}`,
-                    rawContent: `An error occurred while checking BLAST status for Job ID ${jobId}: ${error.message}`
-                };
-                setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), errorMessage]);
+                 const errorRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'error', jobId, errorMessage: error.message } }]
+                });
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
             }
-        }, 5000); // Poll every 5 seconds
+        }, 5000);
 
         const timeoutId = window.setTimeout(() => {
             if (pollIntervalsRef.current[jobId]) {
                 stopPolling(jobId);
-                const timeoutMessage: Message = {
-                    id: `sys-timeout-${Date.now()}`, author: MessageAuthor.SYSTEM,
-                    content: `Polling for BLAST Job ID ${jobId} timed out after 5 minutes. The job may still be running. You can check the status manually on the EBI website.`,
-                    rawContent: `Polling for BLAST Job ID ${jobId} timed out after 5 minutes. The job may still be running. You can check the status manually on the EBI website.`
-                };
-                setMessages(prev => [...prev.filter(m => m.id !== systemMessageId), timeoutMessage]);
+                const timeoutRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'error', jobId, errorMessage: 'Polling timed out after 5 minutes.' } }]
+                });
+                setMessages(prev => prev.map(m => m.id === jobId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
             }
-        }, 300000); // 5-minute timeout for polling
+        }, 300000);
 
         pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
-    }, [stopPolling, parseAndRenderResponse]);
+    }, [stopPolling, renderRhesusContent]);
 
   const handleSendMessage = useCallback(async (messageContent: string, file?: File, replyToMessage?: Message | null): Promise<void> => {
       if (!chat || isLoadingRef.current) return;
-      
       let finalPrompt = messageContent;
-      if (file) {
-          finalPrompt = `Analyze this uploaded PDB file: ${await file.text()}`;
-      }
-      
-      if (finalPrompt.startsWith('/')) {
-        finalPrompt = processSlashCommand(finalPrompt);
-      }
-      
-      if (replyToMessage) {
-          finalPrompt = `In reply to "${replyToMessage.rawContent}", ${finalPrompt}`;
-      }
-      
+      if (file) finalPrompt = `Analyze this uploaded PDB file: ${await file.text()}`;
+      if (finalPrompt.startsWith('/')) finalPrompt = processSlashCommand(finalPrompt);
+      if (replyToMessage) finalPrompt = `In reply to "${replyToMessage.rawContent}", ${finalPrompt}`;
       if (!finalPrompt.trim()) return;
       
       const isStartingANewConversation = isNewChat;
-      setIsNewChat(false); // Any message sent makes it an existing chat
+      setIsNewChat(false);
 
       const displayedMessage = messageContent || `Uploaded ${file?.name}`;
       const newUserMessage: Message = { 
@@ -303,8 +283,7 @@ const ChatbotPage: React.FC = () => {
       
       if (isStartingANewConversation) {
           const chatId = activeProjectId || 'general';
-          let title = finalPrompt.substring(0, 40);
-          if (finalPrompt.length > 40) title += '...';
+          let title = finalPrompt.substring(0, 40) + (finalPrompt.length > 40 ? '...' : '');
           const newChat: RecentChat = activeProjectId
               ? { id: activeProjectId, title, type: 'project', projectName: activeProjectName }
               : { id: 'general', title, type: 'general' };
@@ -314,28 +293,37 @@ const ChatbotPage: React.FC = () => {
       try {
           const fullResponse = await sendMessage(chat, finalPrompt);
           let responseData: AiResponse;
-
           try {
-              const jsonStart = fullResponse.indexOf('{');
-              const jsonEnd = fullResponse.lastIndexOf('}');
-              const jsonString = fullResponse.substring(jsonStart, jsonEnd + 1);
-              responseData = JSON.parse(jsonString);
+              responseData = JSON.parse(fullResponse.match(/\{[\s\S]*\}/)![0]);
           } catch (e) {
               responseData = { prose: fullResponse, tool_calls: [], actions: [] };
           }
           
+          const blastToolCall = responseData.tool_calls?.find(tc => tc.type === 'run_blastp');
+
+          // Add AI's prose part first, but without the blast tool call
+          const proseRawContent = JSON.stringify({ prose: responseData.prose, actions: responseData.actions });
           const rhesusMessage: Message = {
               id: `rhesus-${Date.now()}`,
               author: MessageAuthor.RHESUS,
-              content: parseAndRenderResponse(JSON.stringify({ prose: responseData.prose, actions: responseData.actions })),
-              rawContent: JSON.stringify({ prose: responseData.prose, actions: responseData.actions }),
+              content: renderRhesusContent(proseRawContent),
+              rawContent: proseRawContent,
               actions: responseData.actions || []
           };
           setMessages(prev => [...prev, rhesusMessage]);
 
-          const blastToolCall = responseData.tool_calls?.find(tc => tc.type === 'run_blastp');
-
           if (blastToolCall && blastToolCall.data.sequence) {
+              // Now, handle the BLAST part in a separate, evolving message
+              const progressMessageId = `blast-${Date.now()}`;
+              const initialProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'submitting' } }] });
+              const progressMessage: Message = {
+                  id: progressMessageId,
+                  author: MessageAuthor.RHESUS,
+                  content: renderRhesusContent(initialProgressRawContent),
+                  rawContent: initialProgressRawContent
+              };
+              setMessages(prev => [...prev, progressMessage]);
+
               try {
                   const submitApiResponse = await fetch('/api/blastp', {
                       method: 'POST',
@@ -351,22 +339,13 @@ const ChatbotPage: React.FC = () => {
                   const { jobId } = await submitApiResponse.json();
                   if (!jobId) throw new Error("Did not receive a Job ID from the server.");
                   
-                  const pollSystemMessage: Message = {
-                      id: `sys-poll-${jobId}`,
-                      author: MessageAuthor.SYSTEM,
-                      content: <MarkdownRenderer content={`BLAST search submitted. **Job ID: ${jobId}**. I will report back with the results shortly.`} />,
-                      rawContent: `BLAST search submitted. Job ID: ${jobId}. I will report back with the results shortly.`
-                  };
-                  setMessages(prev => [...prev, pollSystemMessage]);
-                  startPolling(jobId, pollSystemMessage.id);
+                  const pollingProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'polling', jobId } }] });
+                  setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: pollingProgressRawContent, content: renderRhesusContent(pollingProgressRawContent) } : m));
+                  startPolling(jobId, progressMessageId);
 
               } catch (blastError: any) {
-                  const errorMessage: Message = {
-                      id: `sys-error-${Date.now()}`, author: MessageAuthor.SYSTEM,
-                      content: `BLAST search failed: ${blastError.message}`,
-                      rawContent: `BLAST search failed: ${blastError.message}`
-                  };
-                  setMessages(prev => [...prev, errorMessage]);
+                  const errorRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'error', errorMessage: blastError.message } }] });
+                  setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
               }
           }
           setApiStatus('healthy');
@@ -377,7 +356,7 @@ const ChatbotPage: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  }, [chat, setApiStatus, parseAndRenderResponse, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling]);
+  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling]);
 
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => { handleSendMessageRef.current = handleSendMessage; }, [handleSendMessage]);
@@ -387,45 +366,37 @@ const ChatbotPage: React.FC = () => {
   
   useEffect(() => {
     setChat(createChatSession());
-
-    let initialMessages: Message[] = [];
-    if (isNewChat) {
-      const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
-      initialMessages = [{ id: 'initial', author: MessageAuthor.RHESUS, content: <MarkdownRenderer content={greeting}/>, rawContent: greeting }];
+    const stored = localStorage.getItem(historyKey);
+    let initialMessages = [];
+    if (isNewChat || !stored) {
+        const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
+        initialMessages = [{ id: 'initial', author: MessageAuthor.RHESUS, content: <MarkdownRenderer content={greeting}/>, rawContent: greeting }];
     } else {
-        const stored = localStorage.getItem(historyKey);
-        if (stored) {
-            try {
-                const storedMessages = JSON.parse(stored);
-                if (Array.isArray(storedMessages) && storedMessages.length > 0) {
-                    initialMessages = rehydrateMessages(storedMessages);
-                }
-            } catch (e) {
-                localStorage.removeItem(historyKey);
+        try {
+            const storedMessages = JSON.parse(stored);
+            if (Array.isArray(storedMessages) && storedMessages.length > 0) {
+                initialMessages = rehydrateMessages(storedMessages);
             }
+        } catch (e) {
+            localStorage.removeItem(historyKey);
         }
     }
-    // If after all checks, messages are still empty, add initial greeting
     if(initialMessages.length === 0) {
         const greeting = GREETINGS[Math.floor(Math.random() * GREETINGS.length)];
         initialMessages = [{ id: 'initial', author: MessageAuthor.RHESUS, content: <MarkdownRenderer content={greeting}/>, rawContent: greeting }];
     }
-
     setMessages(initialMessages);
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
         setIsSpeechSupported(true);
-        const recognition = new SpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = true;
-        recognition.onstart = () => setIsRecording(true);
-        recognition.onend = () => setIsRecording(false);
-        recognition.onerror = (event: any) => { 
-            console.error('Speech recognition error:', event.error); 
-            setIsRecording(false); 
-        };
-        recognition.onresult = (event: any) => {
+        recognitionRef.current = new SpeechRecognition();
+        recognitionRef.current.continuous = false;
+        recognitionRef.current.interimResults = true;
+        recognitionRef.current.onstart = () => setIsRecording(true);
+        recognitionRef.current.onend = () => setIsRecording(false);
+        recognitionRef.current.onerror = (event: any) => { console.error('Speech recognition error:', event.error); setIsRecording(false); };
+        recognitionRef.current.onresult = (event: any) => {
             const transcript = Array.from(event.results).map((result: any) => result[0].transcript).join('');
             setInput(transcript);
             if (event.results[0].isFinal) {
@@ -433,13 +404,8 @@ const ChatbotPage: React.FC = () => {
               setInput('');
             }
         };
-        recognitionRef.current = recognition;
     }
-
-    // Cleanup polling intervals on unmount or historyKey change
-    return () => {
-        Object.keys(pollIntervalsRef.current).forEach(jobId => stopPolling(jobId));
-    };
+    return () => { Object.keys(pollIntervalsRef.current).forEach(jobId => stopPolling(jobId)); };
   }, [historyKey, rehydrateMessages, isNewChat, stopPolling]);
 
   useEffect(() => {
@@ -451,9 +417,7 @@ const ChatbotPage: React.FC = () => {
   }, [chat, handleSendMessage]);
 
   useEffect(() => {
-    // Don't save if it's a new chat that hasn't had any user interaction yet.
     if (isNewChat) return;
-
     const serializableMessages = messages.map(({ id, author, rawContent, actions, replyTo }) => ({ id, author, rawContent, actions, replyTo }));
     localStorage.setItem(historyKey, JSON.stringify(serializableMessages));
   }, [messages, historyKey, isNewChat]);
