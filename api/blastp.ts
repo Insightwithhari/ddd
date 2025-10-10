@@ -42,7 +42,7 @@ export default async function handler(req: any, res: any) {
                         accession: hit.accession,
                         description: hit.description,
                         score: hsp.scores.bit_score,
-                        e_value: hsp.stats.evalue.toExponential(),
+                        evalue: hsp.stats.evalue,
                         identity: hsp.identity / 100,
                     };
                 }).filter(Boolean);
