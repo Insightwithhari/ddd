@@ -52,8 +52,10 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
         let sortableData = [...data];
         if (sortConfig !== null) {
             sortableData.sort((a, b) => {
-                if (a[sortConfig.key] < b[sortConfig.key]) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (a[sortConfig.key] > b[sortConfig.key]) return sortConfig.direction === 'asc' ? 1 : -1;
+                const valA = a[sortConfig.key];
+                const valB = b[sortConfig.key];
+                if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
+                if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
                 return 0;
             });
         }
@@ -78,6 +80,7 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
             <table className="w-full text-sm text-left">
                 <thead className="bg-slate-200 dark:bg-slate-700">
                     <tr>
+                        <th className="p-2 cursor-pointer" onClick={() => requestSort('accession')}>Accession{getSortIndicator('accession')}</th>
                         <th className="p-2">Description</th>
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('score')}>Score{getSortIndicator('score')}</th>
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('e_value')}>E-value{getSortIndicator('e_value')}</th>
@@ -85,8 +88,13 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
                     </tr>
                 </thead>
                 <tbody>
-                    {sortedData.map((hit, index) => (
-                        <tr key={index} className="border-b border-[var(--border-color)]">
+                    {sortedData.map((hit) => (
+                        <tr key={hit.accession} className="border-b border-[var(--border-color)]">
+                            <td className="p-2 font-mono">
+                                <a href={`https://www.uniprot.org/uniprotkb/${hit.accession}/entry`} target="_blank" rel="noopener noreferrer" className="primary-text hover:underline">
+                                    {hit.accession}
+                                </a>
+                            </td>
                             <td className="p-2">{hit.description}</td>
                             <td className="p-2">{hit.score}</td>
                             <td className="p-2">{hit.e_value}</td>
