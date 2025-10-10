@@ -64,7 +64,7 @@ export default async function handler(req: any, res: any) {
             params.append('stype', 'protein');
             params.append('database', 'uniprotkb');
             params.append('sequence', sequence);
-            params.append('email', 'test@example.com'); // A valid email is required by the API.
+            params.append('email', 'hariom.ae-219@andc.du.ac.in'); // A valid email is required by the API.
 
             const submitResponse = await fetch('https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/run', {
                 method: 'POST',
