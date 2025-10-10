@@ -17,6 +17,7 @@ export default async function handler(req: any, res: any) {
         // 1. Submit the BLASTp job to EMBL-EBI
         const params = new URLSearchParams();
         params.append('program', 'blastp');
+        params.append('stype', 'protein'); // FIX: Added mandatory sequence type parameter
         params.append('database', 'uniprotkb');
         params.append('sequence', sequence);
         params.append('email', 'test@example.com'); // A valid email is required by the API.
