@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "api/blastp.ts": {
+      "maxDuration": 60
+    }
+  }
+}
