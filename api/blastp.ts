@@ -21,7 +21,7 @@ export default async function handler(req: any, res: any) {
         params.append('sequence', sequence);
         params.append('email', 'test@example.com'); // A valid email is required by the API.
 
-        const submitResponse = await fetch('https://www.ebi.ac.uk/Tools/services/rest/blast/run', {
+        const submitResponse = await fetch('https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/run', {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
             // Wait for 3 seconds before checking the status again
             await new Promise(resolve => setTimeout(resolve, 3000));
 
-            const statusResponse = await fetch(`https://www.ebi.ac.uk/Tools/services/rest/blast/status/${jobId}`);
+            const statusResponse = await fetch(`https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/status/${jobId}`);
             if (!statusResponse.ok) {
                  throw new Error(`Failed to get job status for job ID: ${jobId}`);
             }
@@ -59,7 +59,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // 3. Fetch the results in JSON format
-        const resultResponse = await fetch(`https://www.ebi.ac.uk/Tools/services/rest/blast/result/${jobId}/json`);
+        const resultResponse = await fetch(`https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/result/${jobId}/json`);
         if (!resultResponse.ok) {
             throw new Error(`Failed to fetch results: ${await resultResponse.text()}`);
         }
