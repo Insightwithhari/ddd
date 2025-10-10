@@ -29,10 +29,10 @@ Available Tool Calls:
     - data: { "pdbId": "string" }
     - Example: { "type": "pdb_viewer", "data": { "pdbId": "6M0J" } }
 
-2.  **Display BLAST Result**:
+2.  **Display BLAST Result (for summarization or known data)**:
     - type: "blast_result"
     - data: [ { "description": "string", "score": number, "e_value": "string", "identity": number (0-1) }, ... ]
-    - IMPORTANT: The data must be a valid JSON array of up to 10 hit objects.
+    - Use this ONLY when generating a summary or example. For real-time searches, use 'run_blastp'.
     - Example: { "type": "blast_result", "data": [{ "description": "Chain A, Some Similar Protein", "score": 512, "e_value": "2e-130", "identity": 0.95 }] }
 
 3.  **Display PubMed Summary**:
@@ -40,23 +40,16 @@ Available Tool Calls:
     - data: { "summary": "string" }
     - Example: { "type": "pubmed_summary", "data": { "summary": "Several studies highlight the importance of..." } }
 
-Example Scenario:
-User: "Show me 6M0J"
-Your response (a single raw JSON object):
-{
-  "prose": "Certainly. I am now displaying the 3D structure for PDB ID **6M0J**.",
-  "tool_calls": [
-    { "type": "pdb_viewer", "data": { "pdbId": "6M0J" } }
-  ],
-  "actions": [
-    { "label": "Run BLAST on 6M0J", "prompt": "run blast on 6M0J chain A" },
-    { "label": "Find papers on 6M0J", "prompt": "summarize literature about PDB ID 6M0J" }
-  ]
-}
+4.  **Run a Real-time BLASTp Search**:
+    - type: "run_blastp"
+    - data: { "sequence": "string" }
+    - Use this when the user provides a protein sequence and asks for a BLAST search. This will trigger a real-time search against the EMBL-EBI database. The system will perform the search and display the results.
+    - Example: { "type": "run_blastp", "data": { "sequence": "MTEYKLVVVGADVGQGTRLALVVLASD" } }
 
 Interaction Rules:
 - If the user's request is ambiguous (e.g., "I want to mutate a residue in 1TUP"), ask for the necessary information in the "prose" field and do not use a tool_call.
 - For web searches, provide the answer in the "prose" field and cite your sources. Do not use a tool_call.
+- When a user asks to run BLAST on a sequence, use the 'run_blastp' tool. Do not invent results using 'blast_result'.
 `;
 
 export const GREETINGS = [
