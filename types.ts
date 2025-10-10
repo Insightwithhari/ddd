@@ -50,6 +50,8 @@ export enum ContentType {
     PUBMED_SUMMARY = 'pubmed_summary',
     SUMMARY = 'summary',
     CHAT_SESSION = 'chat_session',
+    // FIX: Added 'run_blastp' to allow for real-time BLAST searches.
+    RUN_BLASTP = 'run_blastp',
 }
 
 export interface ContentBlock {
