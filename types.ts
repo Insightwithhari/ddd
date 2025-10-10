@@ -31,7 +31,7 @@ export interface BlastHit {
     accession: string;
     description: string;
     score: number;
-    e_value: string;
+    evalue: number;
     identity: number;
 }
 
