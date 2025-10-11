@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import type { BlastHit } from '../types';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@2.12.7';
+import ErrorBoundary from './ErrorBoundary';
+import { ExclamationTriangleIcon } from './icons';
 
 interface BlastViewerProps {
   data: BlastHit[];
@@ -133,6 +135,14 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
 
 const BlastViewer: React.FC<BlastViewerProps> = ({ data }) => {
   const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
+  
+  const ChartFallback = (
+    <div className="flex flex-col items-center justify-center h-[300px] text-center text-sm text-red-500 bg-red-50 dark:bg-red-900/20 p-4 rounded-md">
+        <ExclamationTriangleIcon className="w-8 h-8 mb-2" />
+        <p className="font-semibold">Could not render chart.</p>
+        <p className="text-xs text-red-400">The data might be malformed. Please try the table view.</p>
+    </div>
+  );
 
   return (
     <div>
@@ -152,7 +162,13 @@ const BlastViewer: React.FC<BlastViewerProps> = ({ data }) => {
             Table
         </button>
       </div>
-      {viewMode === 'chart' ? <BlastChart data={data} /> : <SortableTable data={data} />}
+      {viewMode === 'chart' ? (
+        <ErrorBoundary fallback={ChartFallback}>
+            <BlastChart data={data} />
+        </ErrorBoundary>
+      ) : (
+        <SortableTable data={data} />
+      )}
     </div>
   );
 };
