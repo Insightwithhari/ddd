@@ -38,14 +38,23 @@ export default async function handler(req: any, res: any) {
                 const formattedHits = resultsJson.results.hits.slice(0, 10).map((hit: any) => {
                     if (!hit.hsps || hit.hsps.length === 0) return null;
                     const hsp = hit.hsps[0];
+
+                    // Defensive check for required fields from the EBI JSON structure
+                    if (hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined) {
+                        console.warn('Skipping malformed BLAST hit due to missing fields:', hit.accession);
+                        return null;
+                    }
+
                     return {
                         accession: hit.accession,
                         description: hit.description,
-                        score: hsp.scores.bit_score,
-                        evalue: hsp.stats.evalue,
-                        identity: hsp.identity / 100,
+                        // EBI JSON provides these as strings, so they need to be parsed.
+                        score: parseFloat(hsp.hsp_bit_score),
+                        e_value: hsp.hsp_expect, // The e_value is a string, which matches our type definition.
+                        identity: parseFloat(hsp.hsp_identity) / 100, // Identity is a percentage string like "100.00".
                     };
-                }).filter(Boolean);
+                }).filter(Boolean); // This correctly filters out any nulls from malformed hits.
+
 
                 return res.status(200).json({ status: 'FINISHED', results: formattedHits });
 
@@ -65,7 +74,7 @@ export default async function handler(req: any, res: any) {
             params.append('stype', 'protein');
             params.append('database', 'uniprotkb');
             params.append('sequence', sequence);
-            params.append('email', 'test@example.com'); // A valid email is required by the API.
+            params.append('email', 'hariom.ae-219@andc.du.ac.in'); // A valid email is required by the API.
 
             const submitResponse = await fetch('https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/run', {
                 method: 'POST',
