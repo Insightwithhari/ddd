@@ -350,21 +350,30 @@ const ChatbotPage: React.FC = () => {
               responseData = { prose: fullResponse, tool_calls: [], actions: [] };
           }
           
-          const blastToolCall = responseData.tool_calls?.find(tc => tc.type === 'run_blastp');
+          const blastToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_BLASTP);
 
-          // Add AI's prose part first, but without the blast tool call
-          const proseRawContent = JSON.stringify({ prose: responseData.prose, actions: responseData.actions });
-          const rhesusMessage: Message = {
-              id: `rhesus-${Date.now()}`,
-              author: MessageAuthor.RHESUS,
-              content: renderRhesusContent(proseRawContent),
-              rawContent: proseRawContent,
-              actions: responseData.actions || []
+          // Create a response for the main message bubble, containing everything *except* the real-time BLAST call.
+          const mainResponsePayload: AiResponse = {
+            prose: responseData.prose,
+            actions: responseData.actions,
+            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP),
           };
-          setMessages(prev => [...prev, rhesusMessage]);
 
+          // Only add a message if there's something to show (prose or other tool calls).
+          if (mainResponsePayload.prose || (mainResponsePayload.tool_calls && mainResponsePayload.tool_calls.length > 0)) {
+            const mainMessageRawContent = JSON.stringify(mainResponsePayload);
+            const rhesusMessage: Message = {
+                id: `rhesus-${Date.now()}`,
+                author: MessageAuthor.RHESUS,
+                content: renderRhesusContent(mainMessageRawContent),
+                rawContent: mainMessageRawContent,
+                actions: responseData.actions || []
+            };
+            setMessages(prev => [...prev, rhesusMessage]);
+          }
+
+          // Now, handle the BLAST part in a separate, evolving message
           if (blastToolCall && blastToolCall.data.sequence) {
-              // Now, handle the BLAST part in a separate, evolving message
               const progressMessageId = `blast-${Date.now()}`;
               const initialProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'submitting' } }] });
               const progressMessage: Message = {
