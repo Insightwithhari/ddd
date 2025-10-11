@@ -249,7 +249,7 @@ const ChatbotPage: React.FC = () => {
                 const timeoutRawContent = JSON.stringify({
                     tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'error', jobId, errorMessage: 'Polling timed out after 5 minutes.' } }]
                 });
-                setMessages(prev => prev.map(m => m.id === jobId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
             }
         }, 300000);
 
