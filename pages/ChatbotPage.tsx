@@ -149,7 +149,12 @@ const ChatbotPage: React.FC = () => {
       return storedMessages.map(msg => {
             let content: React.ReactNode;
             if (msg.author === MessageAuthor.RHESUS) {
-                content = renderRhesusContent(msg.rawContent);
+                // For BLAST_PROGRESS messages that were interrupted, show an error state on reload.
+                if (msg.rawContent?.includes(ContentType.BLAST_PROGRESS)) {
+                    content = <BlastProgress status="error" errorMessage="Search was interrupted. Please try again." />;
+                } else {
+                    content = renderRhesusContent(msg.rawContent);
+                }
             } else {
                 content = <MarkdownRenderer content={msg.rawContent || ''} />;
             }
@@ -203,11 +208,6 @@ const ChatbotPage: React.FC = () => {
     }, []);
 
     const startPolling = useCallback((jobId: string, messageId: string) => {
-        // Prevent duplicate polling intervals for the same job
-        if (pollIntervalsRef.current[jobId]) {
-            return;
-        }
-
         const intervalId = window.setInterval(async () => {
             try {
                 const pollResponse = await fetch('/api/blastp', {
@@ -249,7 +249,7 @@ const ChatbotPage: React.FC = () => {
                 const timeoutRawContent = JSON.stringify({
                     tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'error', jobId, errorMessage: 'Polling timed out after 5 minutes.' } }]
                 });
-                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
+                setMessages(prev => prev.map(m => m.id === jobId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
             }
         }, 300000);
 
@@ -294,8 +294,13 @@ const ChatbotPage: React.FC = () => {
           const fullResponse = await sendMessage(chat, finalPrompt);
           let responseData: AiResponse;
           try {
-              responseData = JSON.parse(fullResponse.match(/\{[\s\S]*\}/)![0]);
+              // The API is supposed to return a JSON object. Sometimes it might fail and return plain text.
+              // We'll try to find a JSON object within the response.
+              const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
+              if (!jsonMatch) throw new Error("No JSON object found in response");
+              responseData = JSON.parse(jsonMatch[0]);
           } catch (e) {
+              console.warn("Could not parse AI response as JSON, treating as plain prose.", fullResponse);
               responseData = { prose: fullResponse, tool_calls: [], actions: [] };
           }
           
@@ -376,19 +381,6 @@ const ChatbotPage: React.FC = () => {
             const storedMessages = JSON.parse(stored);
             if (Array.isArray(storedMessages) && storedMessages.length > 0) {
                 initialMessages = rehydrateMessages(storedMessages);
-
-                // --- RESUME POLLING LOGIC ---
-                initialMessages.forEach(msg => {
-                    if (msg.rawContent?.includes(ContentType.BLAST_PROGRESS)) {
-                        try {
-                            const parsed = JSON.parse(msg.rawContent);
-                            const progressCall = parsed.tool_calls?.find((tc: ToolCall) => tc.type === ContentType.BLAST_PROGRESS);
-                            if (progressCall?.data?.status === 'polling' && progressCall?.data?.jobId) {
-                                startPolling(progressCall.data.jobId, msg.id);
-                            }
-                        } catch (e) { /* Ignore parsing errors */ }
-                    }
-                });
             }
         } catch (e) {
             localStorage.removeItem(historyKey);
@@ -419,7 +411,7 @@ const ChatbotPage: React.FC = () => {
         };
     }
     return () => { Object.keys(pollIntervalsRef.current).forEach(jobId => stopPolling(jobId)); };
-  }, [historyKey, rehydrateMessages, isNewChat, stopPolling, startPolling]);
+  }, [historyKey, rehydrateMessages, isNewChat, stopPolling]);
 
   useEffect(() => {
     const initialQuery = sessionStorage.getItem('initialQuery');
