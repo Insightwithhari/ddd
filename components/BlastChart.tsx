@@ -15,12 +15,16 @@ interface CustomTooltipProps {
 const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    const identityPercent = typeof data.identity === 'number' && !isNaN(data.identity)
+      ? (data.identity * 100).toFixed(1)
+      : 'N/A';
+      
     return (
       <div className="p-2 bg-slate-700 text-white rounded-md shadow-lg border border-slate-600 text-sm">
         <p className="font-bold max-w-xs truncate">{data.description}</p>
         <p className="primary-text">{`Score: ${data.score}`}</p>
         <p>{`E-value: ${data.e_value}`}</p>
-        <p>{`Identity: ${(data.identity * 100).toFixed(1)}%`}</p>
+        <p>{`Identity: ${identityPercent}%`}</p>
       </div>
     );
   }
