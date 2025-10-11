@@ -30,12 +30,15 @@ export default async function handler(req: any, res: any) {
                     throw new Error(`Failed to fetch results: ${await resultResponse.text()}`);
                 }
                 const resultsJson = await resultResponse.json();
+                
+                // FIX: Correctly access the 'hits' array, which is nested inside results[0]
+                const hits = resultsJson.results?.[0]?.hits;
 
-                if (!resultsJson.results || !resultsJson.results.hits) {
+                if (!hits || !Array.isArray(hits)) {
                     return res.status(200).json({ status: 'FINISHED', results: [] });
                 }
 
-                const formattedHits = resultsJson.results.hits.slice(0, 10).map((hit: any) => {
+                const formattedHits = hits.slice(0, 10).map((hit: any) => {
                     if (!hit.hsps || hit.hsps.length === 0) return null;
                     const hsp = hit.hsps[0];
 
@@ -74,7 +77,7 @@ export default async function handler(req: any, res: any) {
             params.append('stype', 'protein');
             params.append('database', 'uniprotkb');
             params.append('sequence', sequence);
-            params.append('email', 'hariom.ae-219@andc.du.ac.in'); // A valid email is required by the API.
+            params.append('email', 'test@example.com'); // A valid email is required by the API.
 
             const submitResponse = await fetch('https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/run', {
                 method: 'POST',
