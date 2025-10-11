@@ -14,7 +14,7 @@ const CustomTooltip: React.FC<any> = ({ active, payload }) => {
       <div className="p-2 bg-slate-700 text-white rounded-md shadow-lg border border-slate-600 text-sm">
         <p className="font-bold max-w-xs truncate">{data.description}</p>
         <p className="primary-text">{`Score: ${data.score}`}</p>
-        <p>{`E-value: ${data.evalue.toExponential(2)}`}</p>
+        <p>{`E-value: ${data.e_value}`}</p>
         <p>{`Identity: ${(data.identity * 100).toFixed(1)}%`}</p>
       </div>
     );
@@ -23,7 +23,19 @@ const CustomTooltip: React.FC<any> = ({ active, payload }) => {
 };
 
 const BlastChart: React.FC<{ data: BlastHit[] }> = ({ data }) => {
-    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = window.Recharts;
+    const Recharts = window.Recharts;
+
+    if (!Recharts) {
+        return (
+            <div className="flex items-center justify-center h-[300px] text-center text-sm text-[var(--muted-foreground-color)]">
+                Charting library could not be loaded.
+                <br />
+                Please check your network connection and refresh.
+            </div>
+        );
+    }
+
+    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
     const chartData = data.map(hit => ({
         ...hit,
         shortDescription: hit.description.length > 30 ? `${hit.description.substring(0, 30)}...` : hit.description,
@@ -83,7 +95,7 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('accession')}>Accession{getSortIndicator('accession')}</th>
                         <th className="p-2">Description</th>
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('score')}>Score{getSortIndicator('score')}</th>
-                        <th className="p-2 cursor-pointer" onClick={() => requestSort('evalue')}>E-value{getSortIndicator('evalue')}</th>
+                        <th className="p-2 cursor-pointer" onClick={() => requestSort('e_value')}>E-value{getSortIndicator('e_value')}</th>
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('identity')}>Identity{getSortIndicator('identity')}</th>
                     </tr>
                 </thead>
@@ -97,7 +109,7 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
                             </td>
                             <td className="p-2">{hit.description}</td>
                             <td className="p-2">{hit.score}</td>
-                            <td className="p-2">{hit.evalue.toExponential(2)}</td>
+                            <td className="p-2">{hit.e_value}</td>
                             <td className="p-2">{(hit.identity * 100).toFixed(1)}%</td>
                         </tr>
                     ))}
