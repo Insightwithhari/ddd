@@ -38,25 +38,25 @@ export default async function handler(req: any, res: any) {
                     return res.status(200).json({ status: 'FINISHED', results: [] });
                 }
 
-                const formattedHits = hits.slice(0, 10).map((hit: any) => {
-                    if (!hit.hsps || hit.hsps.length === 0) return null;
-                    const hsp = hit.hsps[0];
+              const formattedHits = hits.slice(0, 10).map((hit: any) => {
+    if (!hit.hit_hsps || hit.hit_hsps.length === 0) return null;
+    const hsp = hit.hit_hsps[0];
 
-                    // Defensive check for required fields from the EBI JSON structure
-                    if (hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined) {
-                        console.warn('Skipping malformed BLAST hit due to missing fields:', hit.accession);
-                        return null;
-                    }
+    // Defensive check for required fields from the EBI JSON structure
+    if (hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined) {
+        console.warn('Skipping malformed BLAST hit due to missing fields:', hit.hit_acc);
+        return null;
+    }
 
-                    return {
-                        accession: hit.accession,
-                        description: hit.description,
-                        // EBI JSON provides these as strings, so they need to be parsed.
-                        score: parseFloat(hsp.hsp_bit_score),
-                        e_value: hsp.hsp_expect, // The e_value is a string, which matches our type definition.
-                        identity: parseFloat(hsp.hsp_identity) / 100, // Identity is a percentage string like "100.00".
-                    };
-                }).filter(Boolean); // This correctly filters out any nulls from malformed hits.
+    return {
+        accession: hit.hit_acc,
+        description: hit.hit_desc,
+        score: parseFloat(hsp.hsp_bit_score),
+        e_value: hsp.hsp_expect,
+        identity: parseFloat(hsp.hsp_identity) / 100,
+    };
+}).filter(Boolean); // Filters out any nulls from malformed hits
+
 
 
                 return res.status(200).json({ status: 'FINISHED', results: formattedHits });
