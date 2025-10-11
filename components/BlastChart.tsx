@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { BlastHit } from '../types';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@2.12.7';
 
 interface BlastViewerProps {
   data: BlastHit[];
