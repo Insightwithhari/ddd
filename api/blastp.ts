@@ -31,9 +31,11 @@ export default async function handler(req: any, res: any) {
                 }
                 const resultsJson = await resultResponse.json();
                 
-                const hits = resultsJson.hits;
+                // FIX: Correctly access the 'hits' array which is nested inside a 'results' object.
+                const hits = resultsJson.results?.hits;
 
                 if (!hits || !Array.isArray(hits)) {
+                    console.warn('Could not find a valid "hits" array in the expected location of the EBI JSON response.', JSON.stringify(resultsJson, null, 2));
                     return res.status(200).json({ status: 'FINISHED', results: [] });
                 }
 
