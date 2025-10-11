@@ -31,48 +31,33 @@ export default async function handler(req: any, res: any) {
                 }
                 const resultsJson = await resultResponse.json();
                 
-                // FIX: Correctly access the 'hits' array which is nested inside a 'results' object.
-                const hits = resultsJson.results?.hits;
+                // FIX: Correctly access the 'hits' array, which is at the top level of the JSON response.
+                const hits = resultsJson.hits;
 
                 if (!hits || !Array.isArray(hits)) {
-                    console.warn('Could not find a valid "hits" array in the expected location of the EBI JSON response.', JSON.stringify(resultsJson, null, 2));
                     return res.status(200).json({ status: 'FINISHED', results: [] });
                 }
 
-                const formattedHits = hits.slice(0, 10).map((hit: any) => {
-                    if (!hit || !hit.hit_hsps || !Array.isArray(hit.hit_hsps) || hit.hit_hsps.length === 0) return null;
-    
-                    const hsp = hit.hit_hsps[0];
-                    const { hit_acc: accession, hit_desc: description } = hit;
-                    const { hsp_bit_score: scoreStr, hsp_expect: e_value, hsp_identity: identityStr } = hsp;
+              const formattedHits = hits.slice(0, 10).map((hit: any) => {
+    if (!hit.hit_hsps || hit.hit_hsps.length === 0) return null;
+    const hsp = hit.hit_hsps[0];
 
-                    if (
-                        typeof accession !== 'string' ||
-                        typeof description !== 'string' ||
-                        typeof scoreStr === 'undefined' ||
-                        typeof e_value !== 'string' ||
-                        typeof identityStr === 'undefined'
-                    ) {
-                        console.warn('Skipping malformed BLAST hit due to missing or mistyped fields:', accession || 'unknown');
-                        return null;
-                    }
+    // Defensive check for required fields from the EBI JSON structure
+    if (hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined) {
+        console.warn('Skipping malformed BLAST hit due to missing fields:', hit.hit_acc);
+        return null;
+    }
 
-                    const score = parseFloat(scoreStr);
-                    const identity = parseFloat(identityStr);
+    return {
+        accession: hit.hit_acc,
+        description: hit.hit_desc,
+        score: parseFloat(hsp.hsp_bit_score),
+        e_value: hsp.hsp_expect,
+        identity: parseFloat(hsp.hsp_identity) / 100,
+    };
+}).filter(Boolean); // Filters out any nulls from malformed hits
 
-                    if (isNaN(score) || isNaN(identity)) {
-                        console.warn('Skipping malformed BLAST hit due to non-numeric score/identity:', accession);
-                        return null;
-                    }
 
-                    return {
-                        accession,
-                        description,
-                        score,
-                        e_value,
-                        identity: identity / 100,
-                    };
-                }).filter(Boolean); // Filters out any nulls from malformed hits
 
                 return res.status(200).json({ status: 'FINISHED', results: formattedHits });
 
