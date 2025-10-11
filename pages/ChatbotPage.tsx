@@ -163,6 +163,11 @@ const ChatbotPage: React.FC = () => {
   }, [renderRhesusContent]);
   
   const handleToggleAudio = useCallback((messageId: string, text: string) => {
+    if (!('speechSynthesis' in window)) {
+        console.warn('Speech synthesis not supported by this browser.');
+        return;
+    }
+
     if (speakingMessageId === messageId) {
         window.speechSynthesis.cancel();
         setSpeakingMessageId(null);
@@ -429,6 +434,7 @@ const ChatbotPage: React.FC = () => {
                 initialMessages = rehydrateMessages(storedMessages);
             }
         } catch (e) {
+            console.warn("Could not parse chat history from localStorage. History will be cleared.", e);
             localStorage.removeItem(historyKey);
         }
     }
