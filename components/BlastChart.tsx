@@ -1,13 +1,18 @@
 import React, { useState, useMemo } from 'react';
 import type { BlastHit } from '../types';
-
-declare const window: any;
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 interface BlastViewerProps {
   data: BlastHit[];
 }
 
-const CustomTooltip: React.FC<any> = ({ active, payload }) => {
+interface CustomTooltipProps {
+    active?: boolean;
+    payload?: Array<{ payload: BlastHit & { shortDescription: string } }>;
+    label?: string | number;
+}
+
+const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
@@ -23,19 +28,14 @@ const CustomTooltip: React.FC<any> = ({ active, payload }) => {
 };
 
 const BlastChart: React.FC<{ data: BlastHit[] }> = ({ data }) => {
-    const Recharts = window.Recharts;
-
-    if (!Recharts) {
+    if (!data || data.length === 0) {
         return (
             <div className="flex items-center justify-center h-[300px] text-center text-sm text-[var(--muted-foreground-color)]">
-                Charting library could not be loaded.
-                <br />
-                Please check your network connection and refresh.
+                No BLAST hits to display in chart.
             </div>
         );
     }
-
-    const { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+    
     const chartData = data.map(hit => ({
         ...hit,
         shortDescription: hit.description.length > 30 ? `${hit.description.substring(0, 30)}...` : hit.description,
@@ -47,7 +47,7 @@ const BlastChart: React.FC<{ data: BlastHit[] }> = ({ data }) => {
                 <BarChart layout="vertical" data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(128, 128, 128, 0.2)" />
                     <XAxis type="number" />
-                    <YAxis dataKey="shortDescription" type="category" width={100} tick={{ fontSize: 10 }} />
+                    <YAxis dataKey="shortDescription" type="category" width={150} tick={{ fontSize: 10 }} />
                     <Tooltip content={<CustomTooltip />} />
                     <Legend />
                     <Bar dataKey="score" fill="var(--primary-color)" />
@@ -87,6 +87,14 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
         return sortConfig.direction === 'asc' ? ' ▲' : ' ▼';
     };
 
+    if (!data || data.length === 0) {
+        return (
+            <div className="flex items-center justify-center h-[300px] text-center text-sm text-[var(--muted-foreground-color)]">
+                No BLAST hits to display in table.
+            </div>
+        );
+    }
+
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-sm text-left">
@@ -125,8 +133,20 @@ const BlastViewer: React.FC<BlastViewerProps> = ({ data }) => {
   return (
     <div>
       <div className="flex justify-end gap-1 mb-2">
-        <button onClick={() => setViewMode('chart')} className={`px-3 py-1 text-xs rounded-full ${viewMode === 'chart' ? 'primary-bg text-white' : 'bg-slate-200 dark:bg-slate-600'}`}>Chart</button>
-        <button onClick={() => setViewMode('table')} className={`px-3 py-1 text-xs rounded-full ${viewMode === 'table' ? 'primary-bg text-white' : 'bg-slate-200 dark:bg-slate-600'}`}>Table</button>
+        <button 
+            onClick={() => setViewMode('chart')} 
+            className={`px-3 py-1 text-xs rounded-full ${viewMode === 'chart' ? 'primary-bg text-white' : 'bg-slate-200 dark:bg-slate-600'}`}
+            aria-label="Switch to chart view"
+        >
+            Chart
+        </button>
+        <button 
+            onClick={() => setViewMode('table')} 
+            className={`px-3 py-1 text-xs rounded-full ${viewMode === 'table' ? 'primary-bg text-white' : 'bg-slate-200 dark:bg-slate-600'}`}
+            aria-label="Switch to table view"
+        >
+            Table
+        </button>
       </div>
       {viewMode === 'chart' ? <BlastChart data={data} /> : <SortableTable data={data} />}
     </div>
