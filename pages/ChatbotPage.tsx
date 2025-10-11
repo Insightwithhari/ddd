@@ -255,8 +255,54 @@ const ChatbotPage: React.FC = () => {
 
         pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
     }, [stopPolling, renderRhesusContent]);
+    
+    const handleFetchBlastJob = useCallback(async (jobId: string) => {
+        if (!jobId) return;
+
+        const systemMessage: Message = {
+            id: `sys-${Date.now()}`,
+            author: MessageAuthor.SYSTEM,
+            content: `Attempting to fetch results for job ID: ${jobId}`,
+            rawContent: `Attempting to fetch results for job ID: ${jobId}`
+        };
+        setMessages(prev => [...prev, systemMessage]);
+
+        const progressMessageId = `blast-${Date.now()}`;
+        const pollingProgressRawContent = JSON.stringify({
+            tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'polling', jobId } }]
+        });
+        const progressMessage: Message = {
+            id: progressMessageId,
+            author: MessageAuthor.RHESUS,
+            content: renderRhesusContent(pollingProgressRawContent),
+            rawContent: pollingProgressRawContent
+        };
+        setMessages(prev => [...prev, progressMessage]);
+        
+        startPolling(jobId, progressMessageId);
+
+    }, [renderRhesusContent, startPolling]);
+
 
   const handleSendMessage = useCallback(async (messageContent: string, file?: File, replyToMessage?: Message | null): Promise<void> => {
+      const trimmedMessage = messageContent.trim();
+      if (trimmedMessage.startsWith('/fetchblast ')) {
+          const jobId = trimmedMessage.split(' ')[1];
+          if (jobId) {
+              const newUserMessage: Message = {
+                  id: Date.now().toString(),
+                  author: MessageAuthor.USER,
+                  content: <MarkdownRenderer content={trimmedMessage} />,
+                  rawContent: trimmedMessage,
+              };
+              setMessages(prev => [...prev, newUserMessage]);
+              setInput('');
+              setReplyingTo(null);
+              await handleFetchBlastJob(jobId);
+              return;
+          }
+      }
+
       if (!chat || isLoadingRef.current) return;
       let finalPrompt = messageContent;
       if (file) finalPrompt = `Analyze this uploaded PDB file: ${await file.text()}`;
@@ -361,7 +407,7 @@ const ChatbotPage: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling]);
+  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling, handleFetchBlastJob]);
 
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => { handleSendMessageRef.current = handleSendMessage; }, [handleSendMessage]);
