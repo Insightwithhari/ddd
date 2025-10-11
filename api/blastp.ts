@@ -38,28 +38,36 @@ export default async function handler(req: any, res: any) {
                 }
 
                 const formattedHits = hits.slice(0, 10).map((hit: any) => {
-                    if (!hit.hit_hsps || hit.hit_hsps.length === 0) return null;
+                    if (!hit || !hit.hit_hsps || !Array.isArray(hit.hit_hsps) || hit.hit_hsps.length === 0) return null;
+    
                     const hsp = hit.hit_hsps[0];
+                    const { hit_acc: accession, hit_desc: description } = hit;
+                    const { hsp_bit_score: scoreStr, hsp_expect: e_value, hsp_identity: identityStr } = hsp;
 
-                    if (hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined) {
-                        console.warn('Skipping malformed BLAST hit due to missing fields:', hit.hit_acc);
+                    if (
+                        typeof accession !== 'string' ||
+                        typeof description !== 'string' ||
+                        typeof scoreStr === 'undefined' ||
+                        typeof e_value !== 'string' ||
+                        typeof identityStr === 'undefined'
+                    ) {
+                        console.warn('Skipping malformed BLAST hit due to missing or mistyped fields:', accession || 'unknown');
                         return null;
                     }
 
-                    const score = parseFloat(hsp.hsp_bit_score);
-                    const identity = parseFloat(hsp.hsp_identity);
+                    const score = parseFloat(scoreStr);
+                    const identity = parseFloat(identityStr);
 
-                    // Additional check for NaN after parsing to prevent client-side errors
                     if (isNaN(score) || isNaN(identity)) {
-                        console.warn('Skipping malformed BLAST hit due to non-numeric score/identity:', hit.hit_acc);
+                        console.warn('Skipping malformed BLAST hit due to non-numeric score/identity:', accession);
                         return null;
                     }
 
                     return {
-                        accession: hit.hit_acc,
-                        description: hit.hit_desc,
-                        score: score,
-                        e_value: hsp.hsp_expect,
+                        accession,
+                        description,
+                        score,
+                        e_value,
                         identity: identity / 100,
                     };
                 }).filter(Boolean); // Filters out any nulls from malformed hits
