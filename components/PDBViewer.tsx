@@ -14,6 +14,13 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId }) => {
 
   useEffect(() => {
     let viewer: any = null;
+
+    if (typeof $3Dmol === 'undefined' || !$3Dmol) {
+        setError("3D viewer library (3Dmol.js) failed to load. Please check your network connection and refresh.");
+        setIsLoading(false);
+        return;
+    }
+
     if (viewerRef.current && pdbId) {
       setIsLoading(true);
       setError(null);
