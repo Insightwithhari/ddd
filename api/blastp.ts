@@ -31,8 +31,8 @@ export default async function handler(req: any, res: any) {
                 }
                 const resultsJson = await resultResponse.json();
                 
-                // FIX: Correctly access the 'hits' array, which is nested inside results[0]
-                const hits = resultsJson.results?.[0]?.hits;
+                // FIX: Correctly access the 'hits' array, which is at the top level of the JSON response.
+                const hits = resultsJson.hits;
 
                 if (!hits || !Array.isArray(hits)) {
                     return res.status(200).json({ status: 'FINISHED', results: [] });
