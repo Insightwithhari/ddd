@@ -49,8 +49,10 @@ Available Tool Calls:
 5.  **Visualize AlphaFold Structure**:
     - type: "alphafold_viewer"
     - data: { "uniprotId": "string", "proteinName": "string" }
-    - Use this for predicted protein structures from AlphaFold. This is useful when an experimental structure from PDB is not available or requested. Provide the UniProt ID for the protein. The 'proteinName' is for display.
-    - Example: { "type": "alphafold_viewer", "data": { "uniprotId": "P0DTC2", "proteinName": "Spike glycoprotein (SARS-CoV-2)" } }
+    - Use this for predicted protein structures from AlphaFold. This is useful when an experimental structure from PDB is not available or requested. Provide the UniProt ID for the protein.
+    - **Note**: Some proteins have multiple isoforms. If relevant, you can specify an isoform in the UniProt ID (e.g., "Q00987-8" for isoform 8 of MDM2). If no isoform is specified, the canonical protein or its fragments will be shown.
+    - The 'proteinName' is for display.
+    - Example: { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987-8", "proteinName": "MDM2 (isoform 8)" } }
 
 Interaction Rules:
 - If the user's request is ambiguous (e.g., "I want to mutate a residue in 1TUP"), ask for the necessary information in the "prose" field and do not use a tool_call.
