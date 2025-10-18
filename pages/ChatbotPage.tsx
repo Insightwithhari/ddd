@@ -119,6 +119,10 @@ const ChatbotPage: React.FC = () => {
                     case ContentType.BLAST_PROGRESS:
                         contentWithCaption = (<BlastProgress status={data.status} jobId={data.jobId} errorMessage={data.errorMessage} />);
                         break;
+                    // FIX: Updated to match the corrected enum member name.
+                    case ContentType.ALPHA_FOLD_VIEWER:
+                        contentWithCaption = (<div><Caption text={`AlphaFold Structure: ${data.proteinName} (${data.uniprotId})`} /><PDBViewer uniprotId={data.uniprotId} /></div>);
+                        break;
                 }
 
                 if (contentWithCaption) {
