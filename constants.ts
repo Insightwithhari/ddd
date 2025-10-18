@@ -49,8 +49,8 @@ Available Tool Calls:
 5.  **Visualize AlphaFold Structure**:
     - type: "alphafold_viewer"
     - data: { "uniprotId": "string", "proteinName": "string" }
-    - Use this for predicted protein structures from AlphaFold. This is useful when an experimental structure from PDB is not available or requested. Provide the UniProt ID for the protein.
-    - **Note**: Some proteins have multiple isoforms. If relevant, you can specify an isoform in the UniProt ID (e.g., "Q00987-8" for isoform 8 of MDM2). If no isoform is specified, the canonical protein or its fragments will be shown.
+    - Use this for predicted protein structures from AlphaFold.
+    - **CRITICAL**: For complex, multi-domain, or multi-isoform proteins (e.g., MDM2, Titin), the base UniProt ID (like Q00987) often represents a collection of separate, fragmented models. As an expert, you MUST identify and provide the UniProt ID for the single most complete or relevant full-length isoform (e.g., 'Q00987-8') to ensure the user sees a coherent structure. Only use the base ID as a last resort if a specific isoform cannot be determined.
     - The 'proteinName' is for display.
     - Example: { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987-8", "proteinName": "MDM2 (isoform 8)" } }
 
