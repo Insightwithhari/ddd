@@ -8,6 +8,22 @@ interface PDBViewerProps {
   uniprotId?: string;
 }
 
+// Helper to fetch with a timeout to prevent indefinite loading states
+const fetchWithTimeout = async (resource: RequestInfo, options: RequestInit = {}, timeout = 15000) => {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(resource, {
+            ...options,
+            signal: controller.signal
+        });
+        return response;
+    } finally {
+        clearTimeout(id);
+    }
+};
+
+
 const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
   const viewerRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,18 +82,41 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
                     sourceName: 'RCSB PDB',
                 };
             } else if (uniprotId) {
-                const apiResponse = await fetch(`https://alphafold.ebi.ac.uk/api/prediction/${uniprotId}`);
+                const apiResponse = await fetchWithTimeout(`https://alphafold.ebi.ac.uk/api/prediction/${uniprotId}`);
                 if (!apiResponse.ok) {
                     if (apiResponse.status === 404) {
-                        throw new Error(`No AlphaFold prediction found for UniProt ID: ${uniprotId}. The ID might be incorrect or reference a protein fragment not modeled by AlphaFold.`);
+                        throw new Error(`No AlphaFold prediction found for UniProt ID: ${uniprotId}. The ID might be incorrect or reference a protein not modeled by AlphaFold.`);
                     }
-                    throw new Error(`Failed to fetch AlphaFold metadata. Status: ${apiResponse.status}`);
+                    throw new Error(`Failed to fetch AlphaFold metadata. Status: ${apiResponse.status} ${apiResponse.statusText}`);
                 }
                 const data = await apiResponse.json();
-                if (!data || data.length === 0 || !data[0].pdbUrl) {
+
+                if (!data || !Array.isArray(data) || data.length === 0) {
+                    throw new Error(`No AlphaFold prediction found for UniProt ID: ${uniprotId}.`);
+                }
+                
+                // Intelligently select the best model to show, prioritizing longer fragments or higher confidence.
+                const bestEntry = data.reduce((best, current) => {
+                    if (!current.pdbUrl) return best;
+                    if (!best) return current;
+                    
+                    const bestLength = (best.uniprotEnd || 0) - (best.uniprotStart || 0);
+                    const currentLength = (current.uniprotEnd || 0) - (current.uniprotStart || 0);
+                    
+                    // If lengths are comparable, pick the one with higher confidence (pLDDT).
+                    if (Math.abs(currentLength - bestLength) < 20) {
+                         return (current.plddt > best.plddt) ? current : best;
+                    }
+                    
+                    // Otherwise, pick the longest one.
+                    return (currentLength > bestLength) ? current : best;
+                }, null);
+
+
+                if (!bestEntry || !bestEntry.pdbUrl) {
                     throw new Error(`AlphaFold metadata for ${uniprotId} is incomplete or does not contain a PDB file URL.`);
                 }
-                const afData = data[0];
+                const afData = bestEntry;
                 info = {
                     fetchUrl: afData.pdbUrl,
                     downloadUrl: afData.pdbUrl,
@@ -93,7 +132,7 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
             if (!isMounted) return;
             setStructureInfo(info);
 
-            const pdbResponse = await fetch(info.fetchUrl);
+            const pdbResponse = await fetchWithTimeout(info.fetchUrl);
             if (!pdbResponse.ok) {
                 if (pdbResponse.status === 404) {
                     throw new Error(`Structure ${info.displayId} not found in ${info.sourceName}. URL: ${info.fetchUrl}`);
@@ -113,7 +152,13 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
 
         } catch (err: any) {
             console.error("Structure fetch error:", err);
-            if (isMounted) setError(err.message || `An unknown error occurred while loading the structure.`);
+            if (isMounted) {
+                if (err.name === 'AbortError') {
+                    setError('The request to AlphaFold timed out. The server may be busy or down. Please try again later.');
+                } else {
+                    setError(err.message || `An unknown error occurred while loading the structure.`);
+                }
+            }
         } finally {
             if (isMounted) setIsLoading(false);
         }
