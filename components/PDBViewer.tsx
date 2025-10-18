@@ -97,35 +97,43 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
                 }
                 const data = await apiResponse.json();
                 
-                const entries = Array.isArray(data) ? data.filter(entry => entry && entry.pdbUrl) : [];
+                const entries = Array.isArray(data) ? data.filter(entry => entry && entry.pdbUrl && entry.uniprotStart && entry.uniprotEnd) : [];
                 if (entries.length === 0) {
                      throw new Error(`No valid AlphaFold prediction entries with PDB URLs found for UniProt ID: ${uniprotId}.`);
                 }
 
-                const firstEntry = entries[0];
+                let bestEntry = entries[0];
+                let displayIdSuffix = '';
+
+                if (entries.length > 1) {
+                    // When multiple fragments are returned, select the longest one as a proxy for the most significant domain.
+                    entries.sort((a, b) => {
+                        const lengthA = (a.uniprotEnd || 0) - (a.uniprotStart || 0);
+                        const lengthB = (b.uniprotEnd || 0) - (b.uniprotStart || 0);
+                        return lengthB - lengthA; // Sort descending by length
+                    });
+                    bestEntry = entries[0];
+                    displayIdSuffix = ` (longest of ${entries.length} fragments)`;
+                }
+
                 const info = {
-                    downloadUrl: firstEntry.pdbUrl,
-                    shareUrl: `https://alphafold.ebi.ac.uk/entry/${firstEntry.uniprotAccession || uniprotId}`,
+                    downloadUrl: bestEntry.pdbUrl,
+                    shareUrl: `https://alphafold.ebi.ac.uk/entry/${bestEntry.uniprotAccession || uniprotId}`,
                     downloadFileName: `AF-${uniprotId}.pdb`,
-                    displayId: uniprotId + (entries.length > 1 ? ` (${entries.length} fragments)` : ''),
+                    displayId: uniprotId + displayIdSuffix,
                     sourceName: 'AlphaFold DB',
                 };
                  if (!isMounted) return;
                 setStructureInfo(info);
 
-                const pdbFetchPromises = entries.map(entry =>
-                    fetchWithTimeout(entry.pdbUrl).then(res => {
-                        if (!res.ok) throw new Error(`Failed to fetch fragment from ${entry.pdbUrl}`);
-                        return res.text();
-                    })
-                );
-                
-                const pdbDataArray = await Promise.all(pdbFetchPromises);
-                if (!isMounted) return;
+                const pdbResponse = await fetchWithTimeout(bestEntry.pdbUrl);
+                if (!pdbResponse.ok) {
+                    throw new Error(`Failed to fetch PDB data from ${bestEntry.pdbUrl}. Status: ${pdbResponse.status}`);
+                }
+                const pdbData = await pdbResponse.text();
 
-                pdbDataArray.forEach(pdbData => {
-                    viewer.addModel(pdbData, 'pdb');
-                });
+                if (!isMounted) return;
+                viewer.addModel(pdbData, 'pdb');
 
             } else {
                 throw new Error("No PDB ID or UniProt ID was provided to the viewer.");
