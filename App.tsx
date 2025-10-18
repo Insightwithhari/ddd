@@ -205,7 +205,8 @@ const App: React.FC = () => {
             }
           } catch (e) {
             // FIX: Avoid using an 'unknown' type error in a template literal, which can cause a TypeScript error.
-            console.error('Could not parse chat history for key:', key, e);
+            // FIX: Converted unknown error type 'e' to a string to prevent a TypeScript error.
+            console.error('Could not parse chat history for key:', key, String(e));
           }
         }
       }
