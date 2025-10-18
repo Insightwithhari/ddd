@@ -29,7 +29,6 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [structureInfo, setStructureInfo] = useState<{
-    fetchUrl: string;
     downloadUrl: string;
     shareUrl: string;
     downloadFileName: string;
@@ -70,10 +69,8 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
         setStructureInfo(null);
         
         try {
-            let info;
-
             if (pdbId) {
-                info = {
+                const info = {
                     fetchUrl: `https://files.rcsb.org/view/${pdbId}.pdb`,
                     downloadUrl: `https://files.rcsb.org/view/${pdbId}.pdb`,
                     shareUrl: `https://www.rcsb.org/structure/${pdbId}`,
@@ -81,6 +78,15 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
                     displayId: pdbId,
                     sourceName: 'RCSB PDB',
                 };
+                setStructureInfo(info);
+                const pdbResponse = await fetchWithTimeout(info.fetchUrl);
+                 if (!pdbResponse.ok) {
+                    throw new Error(`Failed to fetch PDB data for ${pdbId}. Status: ${pdbResponse.status}`);
+                }
+                const pdbData = await pdbResponse.text();
+                if (!isMounted) return;
+                viewer.addModel(pdbData, 'pdb');
+
             } else if (uniprotId) {
                 const apiResponse = await fetchWithTimeout(`https://alphafold.ebi.ac.uk/api/prediction/${uniprotId}`);
                 if (!apiResponse.ok) {
@@ -90,60 +96,42 @@ const PDBViewer: React.FC<PDBViewerProps> = ({ pdbId, uniprotId }) => {
                     throw new Error(`Failed to fetch AlphaFold metadata. Status: ${apiResponse.status} ${apiResponse.statusText}`);
                 }
                 const data = await apiResponse.json();
-
-                if (!data || !Array.isArray(data) || data.length === 0) {
-                    throw new Error(`No AlphaFold prediction found for UniProt ID: ${uniprotId}.`);
-                }
                 
-                // Intelligently select the best model to show, prioritizing longer fragments or higher confidence.
-                const bestEntry = data.reduce((best, current) => {
-                    if (!current.pdbUrl) return best;
-                    if (!best) return current;
-                    
-                    const bestLength = (best.uniprotEnd || 0) - (best.uniprotStart || 0);
-                    const currentLength = (current.uniprotEnd || 0) - (current.uniprotStart || 0);
-                    
-                    // If lengths are comparable, pick the one with higher confidence (pLDDT).
-                    if (Math.abs(currentLength - bestLength) < 20) {
-                         return (current.plddt > best.plddt) ? current : best;
-                    }
-                    
-                    // Otherwise, pick the longest one.
-                    return (currentLength > bestLength) ? current : best;
-                }, null);
-
-
-                if (!bestEntry || !bestEntry.pdbUrl) {
-                    throw new Error(`AlphaFold metadata for ${uniprotId} is incomplete or does not contain a PDB file URL.`);
+                const entries = Array.isArray(data) ? data.filter(entry => entry && entry.pdbUrl) : [];
+                if (entries.length === 0) {
+                     throw new Error(`No valid AlphaFold prediction entries with PDB URLs found for UniProt ID: ${uniprotId}.`);
                 }
-                const afData = bestEntry;
-                info = {
-                    fetchUrl: afData.pdbUrl,
-                    downloadUrl: afData.pdbUrl,
-                    shareUrl: `https://alphafold.ebi.ac.uk/entry/${afData.uniprotAccession || uniprotId}`,
-                    downloadFileName: afData.pdbUrl.split('/').pop() || `AF-${uniprotId}.pdb`,
-                    displayId: afData.uniprotAccession || uniprotId,
+
+                const firstEntry = entries[0];
+                const info = {
+                    downloadUrl: firstEntry.pdbUrl,
+                    shareUrl: `https://alphafold.ebi.ac.uk/entry/${firstEntry.uniprotAccession || uniprotId}`,
+                    downloadFileName: `AF-${uniprotId}.pdb`,
+                    displayId: uniprotId + (entries.length > 1 ? ` (${entries.length} fragments)` : ''),
                     sourceName: 'AlphaFold DB',
                 };
+                 if (!isMounted) return;
+                setStructureInfo(info);
+
+                const pdbFetchPromises = entries.map(entry =>
+                    fetchWithTimeout(entry.pdbUrl).then(res => {
+                        if (!res.ok) throw new Error(`Failed to fetch fragment from ${entry.pdbUrl}`);
+                        return res.text();
+                    })
+                );
+                
+                const pdbDataArray = await Promise.all(pdbFetchPromises);
+                if (!isMounted) return;
+
+                pdbDataArray.forEach(pdbData => {
+                    viewer.addModel(pdbData, 'pdb');
+                });
+
             } else {
                 throw new Error("No PDB ID or UniProt ID was provided to the viewer.");
             }
 
             if (!isMounted) return;
-            setStructureInfo(info);
-
-            const pdbResponse = await fetchWithTimeout(info.fetchUrl);
-            if (!pdbResponse.ok) {
-                if (pdbResponse.status === 404) {
-                    throw new Error(`Structure ${info.displayId} not found in ${info.sourceName}. URL: ${info.fetchUrl}`);
-                }
-                throw new Error(`Failed to fetch PDB data for ${info.displayId}. Status: ${pdbResponse.status}`);
-            }
-            const pdbData = await pdbResponse.text();
-
-            if (!isMounted) return;
-
-            viewer.addModel(pdbData, 'pdb');
             viewer.setStyle({}, { cartoon: { color: 'spectrum' } });
             viewer.zoomTo();
             viewer.render(() => {
