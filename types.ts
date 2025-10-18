@@ -31,7 +31,7 @@ export interface BlastHit {
     accession: string;
     description: string;
     score: number;
-    evalue: number;
+    e_value: string;
     identity: number;
 }
 
@@ -53,6 +53,8 @@ export enum ContentType {
     CHAT_SESSION = 'chat_session',
     RUN_BLASTP = 'run_blastp',
     BLAST_PROGRESS = 'blast_progress',
+    // FIX: Renamed enum member to be a valid identifier (no spaces).
+    ALPHA_FOLD_VIEWER = 'alphafold_viewer',
 }
 
 export interface ContentBlock {
