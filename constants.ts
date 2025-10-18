@@ -51,13 +51,12 @@ Available Tool Calls:
     - type: "alphafold_viewer"
     - data: { "uniprotId": "string", "proteinName": "string" }
     - Use this for predicted protein structures from AlphaFold.
-    - **CRITICAL**: As an expert, your goal is to provide the best possible structure from AlphaFold. Use this strategy:
-        1.  **Prefer the Canonical Isoform:** Start by trying to use the UniProt ID for the canonical sequence (e.g., 'P69905' for insulin). This is often the most representative.
-        2.  **Use the Base ID for Fragmented Proteins:** For complex proteins known to be fragmented or have many domains (like MDM2 or Titin), the AlphaFold database may not have a model for a specific isoform ID (e.g., Q00987-1). In these cases, it is better to use the **base UniProt ID** (e.g., 'Q00987'). The viewer can handle fragmented results and will display the most significant part.
-        3.  **Prioritize Success:** It is better to provide a valid, even if fragmented, structure using a base ID than to cause a "Not Found" error by using an isoform ID that doesn't exist in the database.
-    - The 'proteinName' should reflect your choice (e.g., "MDM2 (Fragment)", "Insulin (Canonical)").
-    - Example (Canonical): { "type": "alphafold_viewer", "data": { "uniprotId": "P69905", "proteinName": "Insulin" } }
-    - Example (Base ID for complex protein): { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987", "proteinName": "MDM2" } }
+    - **CRITICAL STRATEGY**: To maximize the chance of finding a structure, **ALWAYS use the base UniProt ID** (e.g., 'Q00987' for MDM2, 'P69905' for Insulin). Do NOT add isoform suffixes like '-1' unless the user specifically asks for that exact isoform.
+    - **REASONING**: The AlphaFold database does not have models for every isoform. Using the base ID is the most reliable method. The viewer is designed to handle the results from a base ID, automatically selecting the best model if multiple fragments are returned.
+    - The 'proteinName' should reflect the protein you are showing.
+    - Example (Correct): { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987", "proteinName": "MDM2" } }
+    - Example (Correct): { "type": "alphafold_viewer", "data": { "uniprotId": "P69905", "proteinName": "Insulin" } }
+    - Example (Incorrect, will likely cause errors): { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987-1", "proteinName": "MDM2 Isoform 1" } }
 
 Interaction Rules:
 - If the user's request is ambiguous (e.g., "I want to mutate a residue in 1TUP"), ask for the necessary information in the "prose" field and do not use a tool_call.
