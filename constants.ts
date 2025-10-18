@@ -1,3 +1,4 @@
+
 import { TourStep } from './types';
 
 export const DR_RHESUS_SYSTEM_INSTRUCTION = `
@@ -50,12 +51,13 @@ Available Tool Calls:
     - type: "alphafold_viewer"
     - data: { "uniprotId": "string", "proteinName": "string" }
     - Use this for predicted protein structures from AlphaFold.
-    - **CRITICAL**: For complex, multi-isoform proteins (e.g., MDM2, Titin), the base UniProt ID often represents fragmented models. As an expert, you MUST follow this hierarchy to select the best structure:
-        1.  First, identify and use the UniProt ID for the **canonical sequence** (e.g., 'Q00987-1' for MDM2). This is the most representative version.
-        2.  If the canonical sequence is fragmented or unavailable, find and use the UniProt ID for the **longest isoform**.
-        3.  Only use the base ID as a last resort.
-    - The 'proteinName' must reflect your choice (e.g., "MDM2 (Canonical Isoform)", "Titin (Longest Isoform)").
-    - Example: { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987-1", "proteinName": "MDM2 (Canonical Isoform)" } }
+    - **CRITICAL**: As an expert, your goal is to provide the best possible structure from AlphaFold. Use this strategy:
+        1.  **Prefer the Canonical Isoform:** Start by trying to use the UniProt ID for the canonical sequence (e.g., 'P69905' for insulin). This is often the most representative.
+        2.  **Use the Base ID for Fragmented Proteins:** For complex proteins known to be fragmented or have many domains (like MDM2 or Titin), the AlphaFold database may not have a model for a specific isoform ID (e.g., Q00987-1). In these cases, it is better to use the **base UniProt ID** (e.g., 'Q00987'). The viewer can handle fragmented results and will display the most significant part.
+        3.  **Prioritize Success:** It is better to provide a valid, even if fragmented, structure using a base ID than to cause a "Not Found" error by using an isoform ID that doesn't exist in the database.
+    - The 'proteinName' should reflect your choice (e.g., "MDM2 (Fragment)", "Insulin (Canonical)").
+    - Example (Canonical): { "type": "alphafold_viewer", "data": { "uniprotId": "P69905", "proteinName": "Insulin" } }
+    - Example (Base ID for complex protein): { "type": "alphafold_viewer", "data": { "uniprotId": "Q00987", "proteinName": "MDM2" } }
 
 Interaction Rules:
 - If the user's request is ambiguous (e.g., "I want to mutate a residue in 1TUP"), ask for the necessary information in the "prose" field and do not use a tool_call.
