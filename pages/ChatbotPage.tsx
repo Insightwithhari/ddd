@@ -11,7 +11,8 @@ import PDBViewer from '../components/PDBViewer';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import BlastViewer from '../components/BlastChart';
 import BlastProgress from '../components/BlastProgress';
-import { PinIcon, ShareIcon, CheckIcon } from '../components/icons';
+import SequenceViewer from '../components/SequenceViewer';
+import { PinIcon, ShareIcon, CheckIcon, ExclamationTriangleIcon } from '../components/icons';
 
 declare const window: any; // For SpeechRecognition
 
@@ -118,6 +119,14 @@ const ChatbotPage: React.FC = () => {
                         break;
                     case ContentType.BLAST_PROGRESS:
                         contentWithCaption = (<BlastProgress status={data.status} jobId={data.jobId} errorMessage={data.errorMessage} />);
+                        break;
+                    case ContentType.SEQUENCE_VIEWER:
+                         contentWithCaption = (
+                            <div>
+                                <Caption text={`UniProt Sequence: ${data.accession}`} />
+                                <SequenceViewer {...data} />
+                            </div>
+                        );
                         break;
                     // FIX: Updated to match the corrected enum member name.
                     case ContentType.ALPHA_FOLD_VIEWER:
@@ -344,8 +353,6 @@ const ChatbotPage: React.FC = () => {
           const fullResponse = await sendMessage(chat, finalPrompt);
           let responseData: AiResponse;
           try {
-              // The API is supposed to return a JSON object. Sometimes it might fail and return plain text.
-              // We'll try to find a JSON object within the response.
               const jsonMatch = fullResponse.match(/\{[\s\S]*\}/);
               if (!jsonMatch) throw new Error("No JSON object found in response");
               responseData = JSON.parse(jsonMatch[0]);
@@ -355,15 +362,14 @@ const ChatbotPage: React.FC = () => {
           }
           
           const blastToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_BLASTP);
+          const sequenceFetchToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.FETCH_UNIPROT_SEQUENCE);
 
-          // Create a response for the main message bubble, containing everything *except* the real-time BLAST call.
           const mainResponsePayload: AiResponse = {
             prose: responseData.prose,
             actions: responseData.actions,
-            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP),
+            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP && tc.type !== ContentType.FETCH_UNIPROT_SEQUENCE),
           };
 
-          // Only add a message if there's something to show (prose or other tool calls).
           if (mainResponsePayload.prose || (mainResponsePayload.tool_calls && mainResponsePayload.tool_calls.length > 0)) {
             const mainMessageRawContent = JSON.stringify(mainResponsePayload);
             const rhesusMessage: Message = {
@@ -376,7 +382,6 @@ const ChatbotPage: React.FC = () => {
             setMessages(prev => [...prev, rhesusMessage]);
           }
 
-          // Now, handle the BLAST part in a separate, evolving message
           if (blastToolCall && blastToolCall.data.sequence) {
               const progressMessageId = `blast-${Date.now()}`;
               const initialProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.BLAST_PROGRESS, data: { status: 'submitting' } }] });
@@ -412,6 +417,45 @@ const ChatbotPage: React.FC = () => {
                   setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
               }
           }
+          
+          if (sequenceFetchToolCall && sequenceFetchToolCall.data.proteinName) {
+            const { proteinName } = sequenceFetchToolCall.data;
+            const loadingMessageId = `uniprot-${Date.now()}`;
+
+            const loadingNode = (
+                <div className="mt-2 p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)] flex items-center gap-3">
+                     <svg className="animate-spin h-5 w-5 primary-text" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                     <p className="text-sm font-semibold">Fetching sequence for "{proteinName}" from UniProt...</p>
+                </div>
+            );
+
+            const loadingMessage: Message = { id: loadingMessageId, author: MessageAuthor.RHESUS, content: loadingNode };
+            setMessages(prev => [...prev, loadingMessage]);
+
+            try {
+                const response = await fetch('/api/uniprot', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ proteinName }),
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error);
+                
+                const finalRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.SEQUENCE_VIEWER, data: result }]
+                });
+
+                setMessages(prev => prev.map(m => m.id === loadingMessageId ? { ...m, rawContent: finalRawContent, content: renderRhesusContent(finalRawContent) } : m));
+
+            } catch (fetchError: any) {
+                 const errorNode = (
+                    <div className="mt-2 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border-l-4 border-red-400 rounded-r-lg">
+                        <div className="flex"><div className="flex-shrink-0"><ExclamationTriangleIcon className="h-5 w-5 text-red-400" /></div><div className="ml-3"><h3 className="text-sm font-medium text-red-800 dark:text-red-200">Fetch Failed</h3><div className="mt-2 text-sm text-red-700 dark:text-red-300"><p>{fetchError.message}</p></div></div></div>
+                    </div>
+                );
+                setMessages(prev => prev.map(m => m.id === loadingMessageId ? { ...m, content: errorNode, rawContent: `Error: ${fetchError.message}` } : m));
+            }
+        }
           setApiStatus('healthy');
       } catch (error) {
           setApiStatus('error');
