@@ -56,7 +56,8 @@ const App: React.FC = () => {
       const stored = localStorage.getItem('projects');
       return stored ? JSON.parse(stored) : [];
     } catch (error) {
-      console.error("Failed to parse projects from localStorage:", error);
+      // FIX: Ensure unknown error type is converted to string for logging.
+      console.error("Failed to parse projects from localStorage:", String(error));
       return [];
     }
   });
@@ -80,7 +81,8 @@ const App: React.FC = () => {
         try {
             return JSON.parse(storedPipelines);
         } catch (error) {
-            console.error("Failed to parse pipelines from localStorage:", error);
+            // FIX: Ensure unknown error type is converted to string for logging.
+            console.error("Failed to parse pipelines from localStorage:", String(error));
         }
     }
     // If nothing in storage, or if parsing failed, return default example.
@@ -204,7 +206,6 @@ const App: React.FC = () => {
               }
             }
           } catch (e) {
-            // FIX: Avoid using an 'unknown' type error in a template literal, which can cause a TypeScript error.
             // FIX: Converted unknown error type 'e' to a string to prevent a TypeScript error.
             console.error('Could not parse chat history for key:', key, String(e));
           }
