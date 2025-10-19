@@ -55,6 +55,8 @@ export enum ContentType {
     BLAST_PROGRESS = 'blast_progress',
     // FIX: Renamed enum member to be a valid identifier (no spaces).
     ALPHA_FOLD_VIEWER = 'alphafold_viewer',
+    FETCH_UNIPROT_SEQUENCE = 'fetch_uniprot_sequence',
+    SEQUENCE_VIEWER = 'sequence_viewer',
 }
 
 export interface ContentBlock {
