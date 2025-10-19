@@ -2,6 +2,9 @@
   "functions": {
     "api/blastp.ts": {
       "maxDuration": 60
+    },
+    "api/uniprot.ts": {
+      "maxDuration": 30
     }
   }
 }
