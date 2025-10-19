@@ -13,11 +13,47 @@ export default async function handler(req: any, res: any) {
     }
 
     try {
-        // Step 1: Search for the protein to get its UniProt accession ID.
-        // We prioritize reviewed (Swiss-Prot) entries.
-        const searchQuery = `reviewed:true AND (${proteinName})`;
-        const searchUrl = `https://rest.uniprot.org/uniprotkb/search?query=${encodeURIComponent(searchQuery)}&fields=accession,protein_name,organism_name&size=1`;
+        const ORGANISM_MAP: Record<string, number> = {
+            'human': 9606,
+            'homo sapiens': 9606,
+            'mouse': 10090,
+            'mus musculus': 10090,
+            'rat': 10116,
+            'rattus norvegicus': 10116,
+            'zebrafish': 7955,
+            'danio rerio': 7955,
+            'drosophila': 7227,
+            'fruit fly': 7227,
+            'drosophila melanogaster': 7227,
+            'e. coli': 83333,
+            'escherichia coli': 83333,
+            'yeast': 4932,
+            'saccharomyces cerevisiae': 4932,
+        };
 
+        let proteinSearchTerm = proteinName;
+        let organismFilter = '';
+        const lowerProteinName = proteinName.toLowerCase();
+
+        // Find if an organism is mentioned and build a filter
+        for (const [name, taxId] of Object.entries(ORGANISM_MAP)) {
+            if (lowerProteinName.includes(name)) {
+                organismFilter = `AND (organism_id:${taxId})`;
+                // Remove the organism name from the search term to increase precision
+                proteinSearchTerm = proteinSearchTerm.replace(new RegExp(`\\b${name}\\b`, 'i'), '').trim();
+                break; // Stop after finding the first match
+            }
+        }
+
+        // If removing the organism left the search term empty, revert to the original name
+        if (!proteinSearchTerm) {
+            proteinSearchTerm = proteinName;
+        }
+
+        // Construct a precise query that searches specific fields.
+        const searchQuery = `(protein_name:"${proteinSearchTerm}" OR gene:"${proteinSearchTerm}") ${organismFilter} AND (reviewed:true)`;
+        const searchUrl = `https://rest.uniprot.org/uniprotkb/search?query=${encodeURIComponent(searchQuery)}&fields=accession,protein_name,organism_name&size=1`;
+        
         const searchResponse = await fetch(searchUrl, {
             headers: { 'Accept': 'application/json' }
         });
@@ -29,7 +65,7 @@ export default async function handler(req: any, res: any) {
         const searchData = await searchResponse.json();
         
         if (!searchData.results || searchData.results.length === 0) {
-            return res.status(404).json({ error: `No reviewed UniProt entry found for "${proteinName}". Try a more specific name (e.g., "human insulin").` });
+            return res.status(404).json({ error: `No reviewed UniProt entry found for "${proteinName}". Try a more specific name.` });
         }
 
         const entry = searchData.results[0];
