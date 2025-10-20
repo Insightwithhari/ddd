@@ -78,17 +78,28 @@ const AlignmentDetail: React.FC<{ hit: BlastHit }> = ({ hit }) => {
         return lines;
     };
 
+    const renderMidline = (midline: string) => {
+        return midline.split('').map((char, index) => {
+            if (char === '+') {
+                return <span key={index} className="text-green-500">{char}</span>;
+            } else if (char !== ' ') { // A letter for an exact match
+                return <span key={index} className="text-sky-500">{char}</span>;
+            }
+            return char; // A space for a mismatch
+        });
+    };
+
     const alignmentLines = formatAlignment(hit.qseq, hit.midline, hit.hseq);
 
     return (
-        <div className="p-4 bg-slate-100 dark:bg-slate-900/50 rounded-md">
-            <h4 className="font-semibold text-sm mb-2">Sequence Alignment</h4>
-            <pre className="font-mono text-xs overflow-x-auto">
+        <div className="p-4">
+            <h4 className="font-semibold text-sm mb-2 text-[var(--card-foreground-color)]">Sequence Alignment</h4>
+            <pre className="font-mono text-xs overflow-x-auto p-2 bg-slate-100 dark:bg-slate-900/50 rounded-md">
                 {alignmentLines.map((line, index) => (
-                    <div key={index} className="mb-2">
-                        <div><span className="font-bold w-12 inline-block">Query:</span> {line.q}</div>
-                        <div><span className="font-bold w-12 inline-block">       </span> {line.m}</div>
-                        <div><span className="font-bold w-12 inline-block">Sbjct:</span> {line.h}</div>
+                    <div key={index} className="mb-2 last:mb-0">
+                        <div><span className="font-bold w-12 inline-block text-slate-500">Query:</span> {line.q}</div>
+                        <div><span className="w-12 inline-block"></span>{renderMidline(line.m)}</div>
+                        <div><span className="font-bold w-12 inline-block text-slate-500">Sbjct:</span> {line.h}</div>
                     </div>
                 ))}
             </pre>
@@ -141,6 +152,7 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
             <table className="w-full text-sm text-left">
                 <thead className="bg-slate-200 dark:bg-slate-700">
                     <tr>
+                        <th className="p-2 w-4"></th>
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('accession')}>Accession{getSortIndicator('accession')}</th>
                         <th className="p-2">Description</th>
                         <th className="p-2 cursor-pointer" onClick={() => requestSort('score')}>Score{getSortIndicator('score')}</th>
@@ -155,6 +167,9 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
                                 className="border-b border-[var(--border-color)] cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/50"
                                 onClick={() => setExpandedRow(expandedRow === hit.accession ? null : hit.accession)}
                             >
+                                <td className="p-2 text-center">
+                                    <svg className={`w-4 h-4 text-slate-500 transition-transform duration-200 ${expandedRow === hit.accession ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7"></path></svg>
+                                </td>
                                 <td className="p-2 font-mono">
                                     <a href={`https://www.uniprot.org/uniprotkb/${hit.accession}/entry`} target="_blank" rel="noopener noreferrer" className="primary-text hover:underline" onClick={e => e.stopPropagation()}>
                                         {hit.accession}
@@ -167,7 +182,7 @@ const SortableTable: React.FC<{ data: BlastHit[] }> = ({ data }) => {
                             </tr>
                             {expandedRow === hit.accession && (
                                 <tr className="border-b border-[var(--border-color)]">
-                                    <td colSpan={5} className="p-0">
+                                    <td colSpan={6} className="p-0 bg-slate-50 dark:bg-slate-800/30">
                                         <AlignmentDetail hit={hit} />
                                     </td>
                                 </tr>
