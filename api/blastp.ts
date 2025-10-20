@@ -16,7 +16,7 @@ export default async function handler(req: any, res: any) {
             // --- POLLING LOGIC ---
             const statusResponse = await fetch(`https://www.ebi.ac.uk/Tools/services/rest/ncbiblast/status/${jobId}`);
             if (!statusResponse.ok) {
-                // If the job is not found, it might still be initializing. Treat as running.
+                // If the job is not found, it might still be initializing. Treat as running for a while.
                 if (statusResponse.status === 404) {
                     return res.status(200).json({ status: 'RUNNING' });
                 }
@@ -31,36 +31,37 @@ export default async function handler(req: any, res: any) {
                 }
                 const resultsJson = await resultResponse.json();
                 
-                // FIX: Correctly access the 'hits' array, which is at the top level of the JSON response.
                 const hits = resultsJson.hits;
 
                 if (!hits || !Array.isArray(hits)) {
                     return res.status(200).json({ status: 'FINISHED', results: [] });
                 }
 
-              const formattedHits = hits.slice(0, 10).map((hit: any) => {
-    if (!hit.hit_hsps || hit.hit_hsps.length === 0) return null;
-    const hsp = hit.hit_hsps[0];
+                const formattedHits = hits.slice(0, 10).map((hit: any) => {
+                    // Check for the hit object and essential top-level properties
+                    if (!hit || !hit.hit_acc || !hit.hit_desc || !hit.hit_hsps || !Array.isArray(hit.hit_hsps) || hit.hit_hsps.length === 0) {
+                        console.warn('Skipping malformed or incomplete BLAST hit object:', hit);
+                        return null;
+                    }
+                    const hsp = hit.hit_hsps[0];
 
-    // Defensive check for required fields from the EBI JSON structure
-    if (hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined) {
-        console.warn('Skipping malformed BLAST hit due to missing fields:', hit.hit_acc);
-        return null;
-    }
+                    // Check for the HSP object and all required alignment properties
+                    if (!hsp || hsp.hsp_bit_score === undefined || hsp.hsp_expect === undefined || hsp.hsp_identity === undefined || !hsp.hsp_qseq || !hsp.hsp_hseq || !hsp.hsp_midline) {
+                        console.warn('Skipping malformed BLAST HSP due to missing fields:', hsp);
+                        return null;
+                    }
 
-    return {
-        accession: hit.hit_acc,
-        description: hit.hit_desc,
-        score: parseFloat(hsp.hsp_bit_score),
-        e_value: hsp.hsp_expect,
-        identity: parseFloat(hsp.hsp_identity) / 100,
-        qseq: hsp.hsp_qseq,
-        hseq: hsp.hsp_hseq,
-        midline: hsp.hsp_midline,
-    };
-}).filter(Boolean); // Filters out any nulls from malformed hits
-
-
+                    return {
+                        accession: hit.hit_acc,
+                        description: hit.hit_desc,
+                        score: parseFloat(hsp.hsp_bit_score),
+                        e_value: String(hsp.hsp_expect), // Ensure e_value is a string
+                        identity: parseFloat(hsp.hsp_identity) / 100,
+                        qseq: hsp.hsp_qseq,
+                        hseq: hsp.hsp_hseq,
+                        midline: hsp.hsp_midline,
+                    };
+                }).filter(Boolean); // Filters out any nulls from malformed hits
 
                 return res.status(200).json({ status: 'FINISHED', results: formattedHits });
 
