@@ -60,6 +60,9 @@ export enum ContentType {
     RUN_MSA = 'run_msa',
     MSA_PROGRESS = 'msa_progress',
     MSA_RESULT = 'msa_result',
+    RUN_PHYLOGENETIC_TREE = 'run_phylogenetic_tree',
+    PHYLO_TREE_PROGRESS = 'phylo_tree_progress',
+    PHYLO_TREE_RESULT = 'phylo_tree_result',
 }
 
 export interface ContentBlock {
