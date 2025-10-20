@@ -56,7 +56,6 @@ const App: React.FC = () => {
       const stored = localStorage.getItem('projects');
       return stored ? JSON.parse(stored) : [];
     } catch (error) {
-      // FIX: Ensure unknown error type is converted to string for logging.
       console.error("Failed to parse projects from localStorage:", String(error));
       return [];
     }
@@ -81,7 +80,6 @@ const App: React.FC = () => {
         try {
             return JSON.parse(storedPipelines);
         } catch (error) {
-            // FIX: Ensure unknown error type is converted to string for logging.
             console.error("Failed to parse pipelines from localStorage:", String(error));
         }
     }
@@ -206,9 +204,6 @@ const App: React.FC = () => {
               }
             }
           } catch (e) {
-            // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
-            // The error variable 'e' in a catch block is of type 'unknown' and must be
-            // explicitly converted to a string before being passed to console.error.
             console.error('Could not parse chat history for key:', key, String(e));
           }
         }
