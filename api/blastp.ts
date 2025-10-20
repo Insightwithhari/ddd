@@ -54,6 +54,9 @@ export default async function handler(req: any, res: any) {
         score: parseFloat(hsp.hsp_bit_score),
         e_value: hsp.hsp_expect,
         identity: parseFloat(hsp.hsp_identity) / 100,
+        qseq: hsp.hsp_qseq,
+        hseq: hsp.hsp_hseq,
+        midline: hsp.hsp_midline,
     };
 }).filter(Boolean); // Filters out any nulls from malformed hits
 
