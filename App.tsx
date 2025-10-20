@@ -206,7 +206,9 @@ const App: React.FC = () => {
               }
             }
           } catch (e) {
-            // FIX: Converted unknown error type 'e' to a string to prevent a TypeScript error.
+            // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+            // The error variable 'e' in a catch block is of type 'unknown' and must be
+            // explicitly converted to a string before being passed to console.error.
             console.error('Could not parse chat history for key:', key, String(e));
           }
         }
