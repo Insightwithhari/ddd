@@ -23,10 +23,14 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
   }
 
   render() {
-    if (this.state.hasError) {
-      return this.props.fallback;
+    // FIX: Destructure props and state to avoid potential linter issues with direct `this.props` access.
+    const { hasError } = this.state;
+    const { fallback, children } = this.props;
+
+    if (hasError) {
+      return fallback;
     }
-    return this.props.children;
+    return children;
   }
 }
 
