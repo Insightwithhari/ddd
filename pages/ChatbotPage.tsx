@@ -12,6 +12,8 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import BlastViewer from '../components/BlastChart';
 import BlastProgress from '../components/BlastProgress';
 import SequenceViewer from '../components/SequenceViewer';
+import MSAProgress from '../components/MSAProgress';
+import MSAViewer from '../components/MSAViewer';
 import { PinIcon, ShareIcon, CheckIcon, ExclamationTriangleIcon } from '../components/icons';
 
 declare const window: any; // For SpeechRecognition
@@ -128,6 +130,12 @@ const ChatbotPage: React.FC = () => {
                             </div>
                         );
                         break;
+                    case ContentType.MSA_PROGRESS:
+                        contentWithCaption = (<MSAProgress status={data.status} jobId={data.jobId} errorMessage={data.errorMessage} />);
+                        break;
+                    case ContentType.MSA_RESULT:
+                        contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="MSA Result" /><MSAViewer alignment={data.result} /></div>);
+                        break;
                     // FIX: Updated to match the corrected enum member name.
                     case ContentType.ALPHA_FOLD_VIEWER:
                         contentWithCaption = (<div><Caption text={`AlphaFold Structure: ${data.proteinName} (${data.uniprotId})`} /><PDBViewer uniprotId={data.uniprotId} /></div>);
@@ -138,7 +146,7 @@ const ChatbotPage: React.FC = () => {
                     componentParts.push(
                         <div key={contentBlock.id} className="relative group my-2 first:mt-0 last:mb-0">
                             {contentWithCaption}
-                             { type !== ContentType.BLAST_PROGRESS && (
+                             { type !== ContentType.BLAST_PROGRESS && type !== ContentType.MSA_PROGRESS && (
                                 <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                     <button onClick={() => handleSaveContent(contentBlock)} className="p-1.5 bg-slate-700/80 text-white rounded-full hover:bg-slate-600"><PinIcon /></button>
                                     <button onClick={() => handleShareContent(contentBlock)} className="p-1.5 bg-slate-700/80 text-white rounded-full hover:bg-slate-600"><ShareIcon /></button>
@@ -268,6 +276,55 @@ const ChatbotPage: React.FC = () => {
 
         pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
     }, [stopPolling, renderRhesusContent]);
+
+    const startMsaPolling = useCallback((jobId: string, messageId: string) => {
+        const intervalId = window.setInterval(async () => {
+            try {
+                const pollResponse = await fetch('/api/msa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobId })
+                });
+
+                if (!pollResponse.ok) throw new Error(`Polling failed with status: ${pollResponse.status}`);
+                const pollData = await pollResponse.json();
+                
+                if (pollData.status === 'FINISHED') {
+                    stopPolling(jobId);
+                    const finalRawContent = JSON.stringify({
+                        prose: "The real-time Multiple Sequence Alignment is complete.",
+                        tool_calls: [{ type: ContentType.MSA_RESULT, data: { result: pollData.result } }]
+                    });
+                    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: finalRawContent, content: renderRhesusContent(finalRawContent) } : m));
+
+                } else if (pollData.status === 'FAILURE') {
+                    stopPolling(jobId);
+                    const errorRawContent = JSON.stringify({
+                        tool_calls: [{ type: ContentType.MSA_PROGRESS, data: { status: 'error', jobId, errorMessage: pollData.message } }]
+                    });
+                    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
+                }
+            } catch (error: any) {
+                stopPolling(jobId);
+                 const errorRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.MSA_PROGRESS, data: { status: 'error', jobId, errorMessage: error.message } }]
+                });
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
+            }
+        }, 5000);
+
+        const timeoutId = window.setTimeout(() => {
+            if (pollIntervalsRef.current[jobId]) {
+                stopPolling(jobId);
+                const timeoutRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.MSA_PROGRESS, data: { status: 'error', jobId, errorMessage: 'Polling timed out after 5 minutes.' } }]
+                });
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
+            }
+        }, 300000); // 5 minutes
+
+        pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
+    }, [stopPolling, renderRhesusContent]);
     
     const handleFetchBlastJob = useCallback(async (jobId: string) => {
         if (!jobId) return;
@@ -363,11 +420,12 @@ const ChatbotPage: React.FC = () => {
           
           const blastToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_BLASTP);
           const sequenceFetchToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.FETCH_UNIPROT_SEQUENCE);
+          const msaToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_MSA);
 
           const mainResponsePayload: AiResponse = {
             prose: responseData.prose,
             actions: responseData.actions,
-            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP && tc.type !== ContentType.FETCH_UNIPROT_SEQUENCE),
+            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP && tc.type !== ContentType.FETCH_UNIPROT_SEQUENCE && tc.type !== ContentType.RUN_MSA),
           };
 
           if (mainResponsePayload.prose || (mainResponsePayload.tool_calls && mainResponsePayload.tool_calls.length > 0)) {
@@ -456,6 +514,41 @@ const ChatbotPage: React.FC = () => {
                 setMessages(prev => prev.map(m => m.id === loadingMessageId ? { ...m, content: errorNode, rawContent: `Error: ${fetchError.message}` } : m));
             }
         }
+          if (msaToolCall && msaToolCall.data.sequences) {
+              const progressMessageId = `msa-${Date.now()}`;
+              const initialProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.MSA_PROGRESS, data: { status: 'submitting' } }] });
+              const progressMessage: Message = {
+                  id: progressMessageId,
+                  author: MessageAuthor.RHESUS,
+                  content: renderRhesusContent(initialProgressRawContent),
+                  rawContent: initialProgressRawContent
+              };
+              setMessages(prev => [...prev, progressMessage]);
+
+              try {
+                  const submitApiResponse = await fetch('/api/msa', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ sequences: msaToolCall.data.sequences })
+                  });
+
+                  if (!submitApiResponse.ok) {
+                      const errorBody = await submitApiResponse.json();
+                      throw new Error(errorBody.error || `MSA service failed: ${submitApiResponse.statusText}`);
+                  }
+
+                  const { jobId } = await submitApiResponse.json();
+                  if (!jobId) throw new Error("Did not receive a Job ID from the server.");
+                  
+                  const pollingProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.MSA_PROGRESS, data: { status: 'polling', jobId } }] });
+                  setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: pollingProgressRawContent, content: renderRhesusContent(pollingProgressRawContent) } : m));
+                  startMsaPolling(jobId, progressMessageId);
+
+              } catch (msaError: any) {
+                  const errorRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.MSA_PROGRESS, data: { status: 'error', errorMessage: msaError.message } }] });
+                  setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
+              }
+          }
           setApiStatus('healthy');
       } catch (error) {
           setApiStatus('error');
@@ -464,7 +557,7 @@ const ChatbotPage: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling, handleFetchBlastJob]);
+  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling, handleFetchBlastJob, startMsaPolling]);
 
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => { handleSendMessageRef.current = handleSendMessage; }, [handleSendMessage]);
