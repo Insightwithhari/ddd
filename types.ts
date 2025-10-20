@@ -33,6 +33,9 @@ export interface BlastHit {
     score: number;
     e_value: string;
     identity: number;
+    qseq?: string;
+    hseq?: string;
+    midline?: string;
 }
 
 // Recent Chat for Sidebar
