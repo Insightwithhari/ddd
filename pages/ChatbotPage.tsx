@@ -14,6 +14,8 @@ import BlastProgress from '../components/BlastProgress';
 import SequenceViewer from '../components/SequenceViewer';
 import MSAProgress from '../components/MSAProgress';
 import MSAViewer from '../components/MSAViewer';
+import PhyloTreeProgress from '../components/PhyloTreeProgress';
+import PhyloTreeViewer from '../components/PhyloTreeViewer';
 import { PinIcon, ShareIcon, CheckIcon, ExclamationTriangleIcon } from '../components/icons';
 
 declare const window: any; // For SpeechRecognition
@@ -136,6 +138,12 @@ const ChatbotPage: React.FC = () => {
                     case ContentType.MSA_RESULT:
                         contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="MSA Result" /><MSAViewer alignment={data.result} /></div>);
                         break;
+                    case ContentType.PHYLO_TREE_PROGRESS:
+                        contentWithCaption = (<PhyloTreeProgress status={data.status} jobId={data.jobId} errorMessage={data.errorMessage} />);
+                        break;
+                    case ContentType.PHYLO_TREE_RESULT:
+                        contentWithCaption = (<div className="p-4 bg-[var(--input-background-color)] rounded-lg border border-[var(--border-color)]"><Caption text="Phylogenetic Tree Result" /><PhyloTreeViewer treeData={data.result} /></div>);
+                        break;
                     // FIX: Updated to match the corrected enum member name.
                     case ContentType.ALPHA_FOLD_VIEWER:
                         contentWithCaption = (<div><Caption text={`AlphaFold Structure: ${data.proteinName} (${data.uniprotId})`} /><PDBViewer uniprotId={data.uniprotId} /></div>);
@@ -146,7 +154,7 @@ const ChatbotPage: React.FC = () => {
                     componentParts.push(
                         <div key={contentBlock.id} className="relative group my-2 first:mt-0 last:mb-0">
                             {contentWithCaption}
-                             { type !== ContentType.BLAST_PROGRESS && type !== ContentType.MSA_PROGRESS && (
+                             { type !== ContentType.BLAST_PROGRESS && type !== ContentType.MSA_PROGRESS && type !== ContentType.PHYLO_TREE_PROGRESS && (
                                 <div className="absolute top-2 right-2 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                                     <button onClick={() => handleSaveContent(contentBlock)} className="p-1.5 bg-slate-700/80 text-white rounded-full hover:bg-slate-600"><PinIcon /></button>
                                     <button onClick={() => handleShareContent(contentBlock)} className="p-1.5 bg-slate-700/80 text-white rounded-full hover:bg-slate-600"><ShareIcon /></button>
@@ -170,9 +178,13 @@ const ChatbotPage: React.FC = () => {
       return storedMessages.map(msg => {
             let content: React.ReactNode;
             if (msg.author === MessageAuthor.RHESUS) {
-                // For BLAST_PROGRESS messages that were interrupted, show an error state on reload.
+                // For long-running jobs that were interrupted, show an error state on reload.
                 if (msg.rawContent?.includes(ContentType.BLAST_PROGRESS)) {
                     content = <BlastProgress status="error" errorMessage="Search was interrupted. Please try again." />;
+                } else if (msg.rawContent?.includes(ContentType.MSA_PROGRESS)) {
+                    content = <MSAProgress status="error" errorMessage="Alignment was interrupted. Please try again." />;
+                } else if (msg.rawContent?.includes(ContentType.PHYLO_TREE_PROGRESS)) {
+                    content = <PhyloTreeProgress status="error" errorMessage="Tree generation was interrupted. Please try again." />;
                 } else {
                     content = renderRhesusContent(msg.rawContent);
                 }
@@ -325,6 +337,55 @@ const ChatbotPage: React.FC = () => {
 
         pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
     }, [stopPolling, renderRhesusContent]);
+
+    const startPhyloPolling = useCallback((jobId: string, messageId: string) => {
+        const intervalId = window.setInterval(async () => {
+            try {
+                const pollResponse = await fetch('/api/phylo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ jobId })
+                });
+
+                if (!pollResponse.ok) throw new Error(`Polling failed with status: ${pollResponse.status}`);
+                const pollData = await pollResponse.json();
+                
+                if (pollData.status === 'FINISHED') {
+                    stopPolling(jobId);
+                    const finalRawContent = JSON.stringify({
+                        prose: "The phylogenetic tree has been generated.",
+                        tool_calls: [{ type: ContentType.PHYLO_TREE_RESULT, data: { result: pollData.result } }]
+                    });
+                    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: finalRawContent, content: renderRhesusContent(finalRawContent) } : m));
+
+                } else if (pollData.status === 'FAILURE') {
+                    stopPolling(jobId);
+                    const errorRawContent = JSON.stringify({
+                        tool_calls: [{ type: ContentType.PHYLO_TREE_PROGRESS, data: { status: 'error', jobId, errorMessage: pollData.message } }]
+                    });
+                    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
+                }
+            } catch (error: any) {
+                stopPolling(jobId);
+                 const errorRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.PHYLO_TREE_PROGRESS, data: { status: 'error', jobId, errorMessage: error.message } }]
+                });
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
+            }
+        }, 5000);
+
+        const timeoutId = window.setTimeout(() => {
+            if (pollIntervalsRef.current[jobId]) {
+                stopPolling(jobId);
+                const timeoutRawContent = JSON.stringify({
+                    tool_calls: [{ type: ContentType.PHYLO_TREE_PROGRESS, data: { status: 'error', jobId, errorMessage: 'Polling timed out after 5 minutes.' } }]
+                });
+                setMessages(prev => prev.map(m => m.id === messageId ? { ...m, rawContent: timeoutRawContent, content: renderRhesusContent(timeoutRawContent) } : m));
+            }
+        }, 300000); // 5 minutes
+
+        pollIntervalsRef.current[jobId] = { intervalId, timeoutId };
+    }, [stopPolling, renderRhesusContent]);
     
     const handleFetchBlastJob = useCallback(async (jobId: string) => {
         if (!jobId) return;
@@ -421,11 +482,12 @@ const ChatbotPage: React.FC = () => {
           const blastToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_BLASTP);
           const sequenceFetchToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.FETCH_UNIPROT_SEQUENCE);
           const msaToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_MSA);
+          const phyloToolCall = responseData.tool_calls?.find(tc => tc.type === ContentType.RUN_PHYLOGENETIC_TREE);
 
           const mainResponsePayload: AiResponse = {
             prose: responseData.prose,
             actions: responseData.actions,
-            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP && tc.type !== ContentType.FETCH_UNIPROT_SEQUENCE && tc.type !== ContentType.RUN_MSA),
+            tool_calls: responseData.tool_calls?.filter(tc => tc.type !== ContentType.RUN_BLASTP && tc.type !== ContentType.FETCH_UNIPROT_SEQUENCE && tc.type !== ContentType.RUN_MSA && tc.type !== ContentType.RUN_PHYLOGENETIC_TREE),
           };
 
           if (mainResponsePayload.prose || (mainResponsePayload.tool_calls && mainResponsePayload.tool_calls.length > 0)) {
@@ -549,6 +611,41 @@ const ChatbotPage: React.FC = () => {
                   setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
               }
           }
+          if (phyloToolCall && phyloToolCall.data.sequences) {
+              const progressMessageId = `phylo-${Date.now()}`;
+              const initialProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.PHYLO_TREE_PROGRESS, data: { status: 'submitting' } }] });
+              const progressMessage: Message = {
+                  id: progressMessageId,
+                  author: MessageAuthor.RHESUS,
+                  content: renderRhesusContent(initialProgressRawContent),
+                  rawContent: initialProgressRawContent
+              };
+              setMessages(prev => [...prev, progressMessage]);
+
+              try {
+                  const submitApiResponse = await fetch('/api/phylo', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ sequences: phyloToolCall.data.sequences })
+                  });
+
+                  if (!submitApiResponse.ok) {
+                      const errorBody = await submitApiResponse.json();
+                      throw new Error(errorBody.error || `Phylogenetic tree service failed: ${submitApiResponse.statusText}`);
+                  }
+
+                  const { jobId } = await submitApiResponse.json();
+                  if (!jobId) throw new Error("Did not receive a Job ID from the server.");
+                  
+                  const pollingProgressRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.PHYLO_TREE_PROGRESS, data: { status: 'polling', jobId } }] });
+                  setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: pollingProgressRawContent, content: renderRhesusContent(pollingProgressRawContent) } : m));
+                  startPhyloPolling(jobId, progressMessageId);
+
+              } catch (phyloError: any) {
+                  const errorRawContent = JSON.stringify({ tool_calls: [{ type: ContentType.PHYLO_TREE_PROGRESS, data: { status: 'error', errorMessage: phyloError.message } }] });
+                  setMessages(prev => prev.map(m => m.id === progressMessageId ? { ...m, rawContent: errorRawContent, content: renderRhesusContent(errorRawContent) } : m));
+              }
+          }
           setApiStatus('healthy');
       } catch (error) {
           setApiStatus('error');
@@ -557,7 +654,7 @@ const ChatbotPage: React.FC = () => {
       } finally {
           setIsLoading(false);
       }
-  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling, handleFetchBlastJob, startMsaPolling]);
+  }, [chat, setApiStatus, renderRhesusContent, activeProjectId, activeProjectName, recentChats, setRecentChats, isNewChat, setIsNewChat, startPolling, handleFetchBlastJob, startMsaPolling, startPhyloPolling]);
 
   const handleSendMessageRef = useRef(handleSendMessage);
   useEffect(() => { handleSendMessageRef.current = handleSendMessage; }, [handleSendMessage]);
