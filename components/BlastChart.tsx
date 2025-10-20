@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { BlastHit } from '../types';
-import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'https://esm.sh/recharts@2.12.7';
+import { ScatterChart, Scatter, XAxis, YAxis, ZAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'https://esm.sh/recharts@2.12.7';
 import ErrorBoundary from './ErrorBoundary';
 import { ExclamationTriangleIcon } from './icons';
 
