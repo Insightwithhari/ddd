@@ -57,6 +57,9 @@ export enum ContentType {
     ALPHA_FOLD_VIEWER = 'alphafold_viewer',
     FETCH_UNIPROT_SEQUENCE = 'fetch_uniprot_sequence',
     SEQUENCE_VIEWER = 'sequence_viewer',
+    RUN_MSA = 'run_msa',
+    MSA_PROGRESS = 'msa_progress',
+    MSA_RESULT = 'msa_result',
 }
 
 export interface ContentBlock {
