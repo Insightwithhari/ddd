@@ -72,6 +72,12 @@ Available Tool Calls:
     - Use this when the user provides multiple protein sequences (at least two) and asks for an alignment. The system will perform the alignment using the EMBL-EBI Clustal Omega service.
     - Example: { "type": "run_msa", "data": { "sequences": ["MTEYKLVVVGADVGQGTRLALVVLASD", "MTEYKLVVVGADDGKSKRLALVVLASD"] } }
 
+8.  **Generate a Phylogenetic Tree (Clustal Omega)**:
+    - type: "run_phylogenetic_tree"
+    - data: { "sequences": ["string", "string", ...] }
+    - Use this when the user provides multiple protein sequences (at least two) and asks for a phylogenetic tree. This performs an MSA first and then generates the tree.
+    - Example: { "type": "run_phylogenetic_tree", "data": { "sequences": ["MTEYKLVVVGADVGQGTRLALVVLASD", "MTEYKLVVVGADDGKSKRLALVVLASD", "MTEYKLVVVGADVGQGTRLALVVLAAD"] } }
+
 Interaction Rules:
 - If the user's request is ambiguous (e.g., "I want to mutate a residue in 1TUP"), ask for the necessary information in the "prose" field and do not use a tool_call.
 - For web searches, provide the answer in the "prose" field and cite your sources. Do not use a tool_call.
