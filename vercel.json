@@ -8,6 +8,9 @@
     },
     "api/msa.ts": {
       "maxDuration": 60
+    },
+    "api/phylo.ts": {
+      "maxDuration": 60
     }
   }
 }
