@@ -209,8 +209,6 @@ const BlastViewer: React.FC<BlastViewerProps> = ({ data }) => {
             Table
         </button>
       </div>
-      {/* FIX: Replaced ternary operator with logical AND operators for conditional rendering. 
-          This can sometimes resolve subtle type inference issues with JSX children. */}
       {viewMode === 'chart' && (
         <ErrorBoundary fallback={ChartFallback}>
             <BlastScatterChart data={data} />
