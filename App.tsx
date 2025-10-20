@@ -56,7 +56,8 @@ const App: React.FC = () => {
       const stored = localStorage.getItem('projects');
       return stored ? JSON.parse(stored) : [];
     } catch (error) {
-      console.error("Failed to parse projects from localStorage:", String(error));
+      // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+      console.error(`Failed to parse projects from localStorage: ${String(error)}`);
       return [];
     }
   });
@@ -80,7 +81,8 @@ const App: React.FC = () => {
         try {
             return JSON.parse(storedPipelines);
         } catch (error) {
-            console.error("Failed to parse pipelines from localStorage:", String(error));
+            // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+            console.error(`Failed to parse pipelines from localStorage: ${String(error)}`);
         }
     }
     // If nothing in storage, or if parsing failed, return default example.
@@ -204,7 +206,8 @@ const App: React.FC = () => {
               }
             }
           } catch (e) {
-            console.error('Could not parse chat history for key:', key, String(e));
+            // FIX: Argument of type 'unknown' is not assignable to parameter of type 'string'.
+            console.error(`Could not parse chat history for key: ${key}. Error: ${String(e)}`);
           }
         }
       }
