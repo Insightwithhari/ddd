@@ -5,6 +5,9 @@
     },
     "api/uniprot.ts": {
       "maxDuration": 30
+    },
+    "api/msa.ts": {
+      "maxDuration": 60
     }
   }
 }
